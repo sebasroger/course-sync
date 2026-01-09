@@ -1,0 +1,131 @@
+package eightfold
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"time"
+)
+
+type Client struct {
+	BaseURL     string
+	HTTP        *http.Client
+	BearerToken string
+}
+
+func New(baseURL string) *Client {
+	return &Client{
+		BaseURL: baseURL,
+		HTTP: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
+}
+
+type AuthRequest struct {
+	GrantType string `json:"grantType"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+}
+
+type AuthResponse struct {
+	Data struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
+		Scope       string `json:"scope"`
+		TokenType   string `json:"token_type"`
+	} `json:"data"`
+}
+
+func (c *Client) Authenticate(ctx context.Context, basicBase64 string, req AuthRequest) error {
+	b, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+
+	r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/oauth/v1/authenticate", bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Accept", "application/json")
+	r.Header.Set("Authorization", "Basic "+basicBase64)
+
+	resp, err := c.HTTP.Do(r)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("eightfold auth failed: status=%d body=%s", resp.StatusCode, string(body))
+	}
+
+	var ar AuthResponse
+	if err := json.Unmarshal(body, &ar); err != nil {
+		return err
+	}
+
+	token := ar.Data.AccessToken
+	if token == "" {
+		return fmt.Errorf("eightfold auth: token not found. raw response=%s", string(body))
+	}
+	c.BearerToken = token
+	return nil
+
+}
+
+type ListCoursesResponse struct {
+	Data []map[string]any `json:"data"`
+	Meta struct {
+		PageStartIndex int `json:"pageStartIndex"`
+		PageTotalCount int `json:"pageTotalCount"`
+		TotalCount     int `json:"totalCount"`
+	} `json:"meta"`
+}
+
+func (c *Client) ListCourses(ctx context.Context, limit int) ([]map[string]any, error) {
+	if c.BearerToken == "" {
+		return nil, errors.New("eightfold: missing bearer token (call Authenticate first)")
+	}
+
+	u, _ := url.Parse(c.BaseURL + "/api/v2/core/courses")
+	q := u.Query()
+	if limit > 0 {
+		q.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	u.RawQuery = q.Encode()
+
+	r, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	r.Header.Set("Accept", "application/json")
+	r.Header.Set("Authorization", "Bearer "+c.BearerToken)
+
+	resp, err := c.HTTP.Do(r)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("list courses failed: status=%d body=%s", resp.StatusCode, string(body))
+	}
+
+	var out ListCoursesResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("json parse error: %w body=%s", err, string(body))
+	}
+
+	return out.Data, nil
+
+}
