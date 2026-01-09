@@ -18,6 +18,57 @@ type Client struct {
 	BearerToken string
 }
 
+type CourseUpsertRequest struct {
+	Status        string   `json:"status,omitempty"`
+	ImageUrl      string   `json:"imageUrl,omitempty"`
+	LmsCourseId   string   `json:"lmsCourseId,omitempty"`
+	Language      string   `json:"language,omitempty"`
+	Skills        []string `json:"skills,omitempty"`
+	SystemId      string   `json:"systemId,omitempty"`
+	DurationHours float64  `json:"durationHours,omitempty"`
+	CourseType    string   `json:"courseType,omitempty"`
+	PublishedDate string   `json:"publishedDate,omitempty"`
+	Difficulty    string   `json:"difficulty,omitempty"`
+	Provider      string   `json:"provider,omitempty"`
+	CourseUrl     string   `json:"courseUrl,omitempty"`
+	Description   string   `json:"description,omitempty"`
+	Title         string   `json:"title,omitempty"`
+	Category      string   `json:"category,omitempty"`
+}
+
+func (c *Client) UpsertCourse(ctx context.Context, course CourseUpsertRequest) error {
+	if c.BearerToken == "" {
+		return errors.New("eightfold: missing bearer token (call Authenticate first)")
+	}
+
+	b, err := json.Marshal(course)
+	if err != nil {
+		return err
+	}
+
+	r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/api/v2/core/courses", bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Accept", "application/json")
+	r.Header.Set("Authorization", "Bearer "+c.BearerToken)
+
+	resp, err := c.HTTP.Do(r)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("upsert course failed: status=%d body=%s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
 func New(baseURL string) *Client {
 	return &Client{
 		BaseURL: baseURL,
