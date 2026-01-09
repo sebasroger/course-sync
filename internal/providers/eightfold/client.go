@@ -12,6 +12,11 @@ import (
 	"time"
 )
 
+const (
+	contentTypeJSON = "application/json"
+	acceptJSON      = contentTypeJSON
+)
+
 type Client struct {
 	BaseURL     string
 	HTTP        *http.Client
@@ -51,17 +56,20 @@ func (c *Client) UpsertCourse(ctx context.Context, course CourseUpsertRequest) e
 		return err
 	}
 
-	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Accept", "application/json")
+	r.Header.Set("Content-Type", contentTypeJSON)
+	r.Header.Set("Accept", acceptJSON)
 	r.Header.Set("Authorization", "Bearer "+c.BearerToken)
 
 	resp, err := c.HTTP.Do(r)
 	if err != nil {
-		return err
+		return fmt.Errorf("eightfold: upsert request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("eightfold: upsert read response body: %w", err)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("upsert course failed: status=%d body=%s", resp.StatusCode, string(body))
 	}
@@ -104,17 +112,20 @@ func (c *Client) Authenticate(ctx context.Context, basicBase64 string, req AuthR
 		return err
 	}
 
-	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Accept", "application/json")
+	r.Header.Set("Content-Type", contentTypeJSON)
+	r.Header.Set("Accept", acceptJSON)
 	r.Header.Set("Authorization", "Basic "+basicBase64)
 
 	resp, err := c.HTTP.Do(r)
 	if err != nil {
-		return err
+		return fmt.Errorf("eightfold: auth request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("eightfold: auth read response body: %w", err)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("eightfold auth failed: status=%d body=%s", resp.StatusCode, string(body))
 	}
@@ -147,7 +158,10 @@ func (c *Client) ListCourses(ctx context.Context, limit int) ([]map[string]any, 
 		return nil, errors.New("eightfold: missing bearer token (call Authenticate first)")
 	}
 
-	u, _ := url.Parse(c.BaseURL + "/api/v2/core/courses")
+	u, err := url.Parse(c.BaseURL + "/api/v2/core/courses")
+	if err != nil {
+		return nil, fmt.Errorf("eightfold: invalid base url: %w", err)
+	}
 	q := u.Query()
 	if limit > 0 {
 		q.Set("limit", fmt.Sprintf("%d", limit))
@@ -163,11 +177,14 @@ func (c *Client) ListCourses(ctx context.Context, limit int) ([]map[string]any, 
 
 	resp, err := c.HTTP.Do(r)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("eightfold: list request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("eightfold: list read response body: %w", err)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("list courses failed: status=%d body=%s", resp.StatusCode, string(body))
 	}

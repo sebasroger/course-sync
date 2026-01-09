@@ -27,20 +27,11 @@ func New(baseURL, token string) *Client {
 }
 
 type graphQLRequest struct {
-	Query     string                 `json:"query"`
-	Variables map[string]interface{} `json:"variables,omitempty"`
+	Query     string         `json:"query"`
+	Variables map[string]any `json:"variables,omitempty"`
 }
 
 type graphQLError struct {
-	Message string `json:"message"`
-}
-
-type graphQLResponse[T any] struct {
-	Data   T              `json:"data"`
-	Errors []graphQLError `json:"errors"`
-}
-
-type GraphQLError struct {
 	Message string `json:"message"`
 }
 
@@ -55,7 +46,7 @@ type CourseCatalogGQLResponse struct {
 			Nodes []CourseNode `json:"nodes"`
 		} `json:"courseCatalog"`
 	} `json:"data"`
-	Errors []GraphQLError `json:"errors"`
+	Errors []graphQLError `json:"errors"`
 }
 
 type CourseNode struct {
@@ -109,7 +100,7 @@ query CourseCatalog($first: Int!, $after: String) {
 func (c *Client) ListCoursesPage(ctx context.Context, first int, after *string) (CourseCatalogGQLResponse, error) {
 	reqBody := graphQLRequest{
 		Query: courseCatalogQuery,
-		Variables: map[string]interface{}{
+		Variables: map[string]any{
 			"first": first,
 			"after": func() any {
 				if after == nil || *after == "" {
@@ -121,12 +112,12 @@ func (c *Client) ListCoursesPage(ctx context.Context, first int, after *string) 
 	}
 	b, err := json.Marshal(reqBody)
 	if err != nil {
-		return CourseCatalogGQLResponse{}, err
+		return CourseCatalogGQLResponse{}, fmt.Errorf("pluralsight: marshal gql request: %w", err)
 	}
 
 	r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL, bytes.NewReader(b))
 	if err != nil {
-		return CourseCatalogGQLResponse{}, err
+		return CourseCatalogGQLResponse{}, fmt.Errorf("pluralsight: build request: %w", err)
 	}
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Accept", "application/json")
@@ -134,11 +125,14 @@ func (c *Client) ListCoursesPage(ctx context.Context, first int, after *string) 
 
 	resp, err := c.HTTP.Do(r)
 	if err != nil {
-		return CourseCatalogGQLResponse{}, err
+		return CourseCatalogGQLResponse{}, fmt.Errorf("pluralsight: request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return CourseCatalogGQLResponse{}, fmt.Errorf("pluralsight: read response body: %w", err)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return CourseCatalogGQLResponse{}, fmt.Errorf("pluralsight gql failed: status=%d body=%s", resp.StatusCode, string(body))
 	}

@@ -53,7 +53,10 @@ func (c *Client) ListCourses(
 ) ([]Course, error) {
 	var all []Course
 
-	u, _ := url.Parse(c.BaseURL + "/courses/list/")
+	u, err := url.Parse(c.BaseURL + "/courses/list/")
+	if err != nil {
+		return nil, fmt.Errorf("udemy: invalid base url: %w", err)
+	}
 	q := u.Query()
 	q.Set("page_size", fmt.Sprintf("%d", pageSize))
 	u.RawQuery = q.Encode()
@@ -82,16 +85,16 @@ func (c *Client) ListCourses(
 
 func (c *Client) fetchPage(
 	ctx context.Context,
-	url string,
+	pageURL string,
 ) (*ListCoursesResponse, error) {
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		url,
+		pageURL,
 		nil,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("udemy: build request: %w", err)
 	}
 
 	req.Header.Set("Accept", "application/json")
@@ -102,11 +105,14 @@ func (c *Client) fetchPage(
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("udemy: request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("udemy: read response body: %w", err)
+	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf(
 			"udemy list failed: status=%d body=%s",
@@ -117,7 +123,7 @@ func (c *Client) fetchPage(
 
 	var out ListCoursesResponse
 	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("udemy: json parse error: %w", err)
 	}
 
 	return &out, nil
