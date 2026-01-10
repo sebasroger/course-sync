@@ -1,61 +1,82 @@
 package main
 
 import (
-    "context"
-    "flag"
-    "log"
-    "os"
-    "time"
+	"context"
+	"flag"
+	"log"
+	"path/filepath"
+	"time"
 
-    "course-sync/internal/config"
-    "course-sync/internal/domain"
-    "course-sync/internal/export"
-    "course-sync/internal/providers/pluralsight"
-    "course-sync/internal/providers/udemy"
+	"course-sync/internal/config"
+	"course-sync/internal/export"
+	"course-sync/internal/providers/pluralsight"
+	"course-sync/internal/providers/udemy"
+	"course-sync/internal/sftpclient"
 )
 
 func main() {
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-    defer cancel()
+	var (
+		outPath    = flag.String("out", "COURSE-MAIN_ALL.csv", "output csv path")
+		udemyPages = flag.Int("udemy-max-pages", 1, "max pages to fetch from udemy")
+		psPages    = flag.Int("ps-max-pages", 1, "max pages to fetch from pluralsight")
+		pageSize   = flag.Int("page-size", 100, "page size for providers (when supported)")
 
-    outPath := flag.String("out", "eightfold-courses.csv", "output csv path")
-    udemyPageSize := flag.Int("udemy-page-size", 100, "udemy page size")
-    udemyMaxPages := flag.Int("udemy-max-pages", 0, "udemy max pages (<=0 = all)")
-    psFirst := flag.Int("ps-first", 100, "pluralsight page size")
-    psMaxPages := flag.Int("ps-max-pages", 0, "pluralsight max pages (<=0 = all)")
-    flag.Parse()
+		uploadSFTP = flag.Bool("sftp", false, "upload the generated CSV via SFTP")
+	)
+	flag.Parse()
 
-    cfg := config.Load()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
 
-    psClient := pluralsight.New(cfg.PluralsightBaseURL, cfg.PluralsightToken)
-    udClient := udemy.New(cfg.UdemyBaseURL, cfg.UdemyClientID, cfg.UdemyClientSecret)
+	cfg := config.Load()
 
-    psProv := pluralsight.Provider{C: psClient, First: *psFirst, MaxPages: *psMaxPages}
-    udProv := udemy.Provider{C: udClient, PageSize: *udemyPageSize, MaxPages: *udemyMaxPages}
+	u := udemy.New(cfg.UdemyBaseURL, cfg.UdemyClientID, cfg.UdemyClientSecret)
+	p := pluralsight.New(cfg.PluralsightBaseURL, cfg.PluralsightToken)
 
-    courses := make([]domain.UnifiedCourse, 0, 4096)
+	udProv := udemy.Provider{
+		C:        u,
+		PageSize: *pageSize,
+		MaxPages: *udemyPages,
+	}
+	udCourses, err := udProv.ListCourses(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    psCourses, err := psProv.ListCourses(ctx)
-    if err != nil {
-        log.Fatalf("pluralsight list error: %v", err)
-    }
-    courses = append(courses, psCourses...)
+	psProv := pluralsight.Provider{
+		C:        p,
+		First:    *pageSize,
+		MaxPages: *psPages,
+	}
+	psCourses, err := psProv.ListCourses(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    udCourses, err := udProv.ListCourses(ctx)
-    if err != nil {
-        log.Fatalf("udemy list error: %v", err)
-    }
-    courses = append(courses, udCourses...)
+	all := append(udCourses, psCourses...)
+	if err := export.WriteEightfoldCourseCSV(*outPath, all); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("wrote %d courses to %s", len(all), *outPath)
 
-    f, err := os.Create(*outPath)
-    if err != nil {
-        log.Fatalf("create csv: %v", err)
-    }
-    defer f.Close()
+	if *uploadSFTP {
+		remoteName := filepath.Base(*outPath)
 
-    if err := export.WriteEightfoldCSV(f, courses); err != nil {
-        log.Fatalf("write csv: %v", err)
-    }
+		upCfg := sftpclient.Config{
+			Host:                  cfg.SFTPHost,
+			Port:                  cfg.SFTPPort,
+			User:                  cfg.SFTPUser,
+			Pass:                  cfg.SFTPPass,
+			RemoteDir:             cfg.SFTPDir,
+			InsecureIgnoreHostKey: cfg.SFTPInsecureIgnoreHostKey,
+		}
 
-    log.Printf("done. wrote %d courses to %s\n", len(courses), *outPath)
+		upCtx, upCancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer upCancel()
+
+		if err := sftpclient.UploadFile(upCtx, upCfg, *outPath, remoteName); err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("uploaded to sftp://%s:%d%s/%s", upCfg.Host, upCfg.Port, upCfg.RemoteDir, remoteName)
+	}
 }

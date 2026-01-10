@@ -1,134 +1,98 @@
 package export
 
 import (
-    "course-sync/internal/domain"
-    "encoding/csv"
-    "io"
-    "strconv"
-    "strings"
+	"encoding/csv"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+
+	"course-sync/internal/domain"
 )
 
-// Eightfold CSV template (based on COURSE-MAIN_PLURAL.csv).
-// Keep header order EXACT.
-var eightfoldHeader = []string{
-    "COURSE_ID",
-    "COURSE_TITLE",
-    "COURSE_DESCRIPTION",
-    "COURSE_URL",
-    "DURATION_HOURS",
-    "CATEGORY",
-    "REQUIREMENTS",
-    "COURSE_TYPE",
-    "LANGUAGE",
-    "DIFFICULTY",
-    "STATUS",
-    "IMAGE_URL",
-    "SKILLS",
-    "PROFICIENCY_LIST",
-    "PROVIDER",
-    "FEE_VALUE",
-    "FEE_CURRENCY",
-    "LOCATION",
-    "PUBLISHED_TS",
-    "SENIORITY_LIST",
-    "JOB_FUNCTION_LIST",
-    "JOB_CODE_LIST",
-    "BUSINESS_UNIT_LIST",
-    "RATING",
-    "RATING_COUNT",
+var header = []string{
+	"systemId",
+	"title",
+	"description",
+	"courseUrl",
+	"durationHours",
+	"category",
+	"imageUrl",
+	"language",
+	"publishedDate",
+	"lmsCourseId",
+	"difficulty",
+	"provider",
+	"status",
 }
 
-// WriteEightfoldCSV writes courses in the Eightfold import format.
-// It intentionally leaves non-mapped columns empty.
-func WriteEightfoldCSV(w io.Writer, courses []domain.UnifiedCourse) error {
-    cw := csv.NewWriter(w)
-    // match typical templates
-    cw.UseCRLF = true
+func WriteEightfoldCourseCSV(outPath string, courses []domain.UnifiedCourse) error {
+	f, err := os.Create(outPath)
+	if err != nil {
+		return fmt.Errorf("export: create csv: %w", err)
+	}
+	defer f.Close()
 
-    if err := cw.Write(eightfoldHeader); err != nil {
-        return err
-    }
+	w := csv.NewWriter(f)
+	defer w.Flush()
 
-    for _, c := range courses {
-        row := toEightfoldRow(c)
-        if err := cw.Write(row); err != nil {
-            return err
-        }
-    }
-    cw.Flush()
-    return cw.Error()
+	if err := w.Write(header); err != nil {
+		return fmt.Errorf("export: write header: %w", err)
+	}
+
+	for _, c := range courses {
+		systemID := buildSystemID(c.Source, c.SourceID)
+		status := c.Status
+		if status == "" {
+			status = "active"
+		}
+
+		row := []string{
+			systemID,
+			c.Title,
+			c.Description,
+			c.CourseURL,
+			floatToString(c.DurationHours),
+			c.Category,
+			c.ImageURL,
+			firstNonEmpty(c.Language), // si viene vacío igual queda vacío
+			c.PublishedDate,
+			c.SourceID, // lmsCourseId
+			c.Difficulty,
+			c.Source, // provider
+			status,
+		}
+
+		if err := w.Write(row); err != nil {
+			return fmt.Errorf("export: write row: %w", err)
+		}
+	}
+
+	if err := w.Error(); err != nil {
+		return fmt.Errorf("export: csv error: %w", err)
+	}
+
+	return nil
 }
 
-func toEightfoldRow(c domain.UnifiedCourse) []string {
-    // defaults
-    courseType := "Online"
-    status := c.Status
-    if status == "" {
-        status = "active"
-    }
-
-    // joiners
-    skills := ""
-    if len(c.Skills) > 0 {
-        // avoid commas to keep CSV clean
-        skills = strings.Join(cleanStrings(c.Skills), " | ")
-    }
-
-    duration := ""
-    if c.DurationHours > 0 {
-        // keep it simple: plain decimal
-        duration = strconv.FormatFloat(c.DurationHours, 'f', -1, 64)
-    }
-
-    // Provider: keep first letter uppercase, rest lowercase ("udemy" -> "Udemy")
-    provider := strings.TrimSpace(c.Source)
-    if provider != "" {
-        provider = strings.ToUpper(provider[:1]) + strings.ToLower(provider[1:])
-    }
-
-    // NOTE: published format is whatever the provider gives (ISO string). If unknown, keep empty.
-    published := strings.TrimSpace(c.PublishedDate)
-
-    return []string{
-        c.SourceID,          // COURSE_ID
-        c.Title,             // COURSE_TITLE
-        c.Description,       // COURSE_DESCRIPTION
-        c.CourseURL,         // COURSE_URL
-        duration,            // DURATION_HOURS
-        c.Category,          // CATEGORY
-        "",                 // REQUIREMENTS
-        courseType,          // COURSE_TYPE
-        c.Language,          // LANGUAGE
-        c.Difficulty,        // DIFFICULTY
-        status,              // STATUS
-        c.ImageURL,          // IMAGE_URL
-        skills,              // SKILLS
-        "",                 // PROFICIENCY_LIST
-        provider,            // PROVIDER
-        "",                 // FEE_VALUE
-        "",                 // FEE_CURRENCY
-        "",                 // LOCATION
-        published,           // PUBLISHED_TS
-        "",                 // SENIORITY_LIST
-        "",                 // JOB_FUNCTION_LIST
-        "",                 // JOB_CODE_LIST
-        "",                 // BUSINESS_UNIT_LIST
-        "",                 // RATING
-        "",                 // RATING_COUNT
-    }
+func buildSystemID(source, sourceID string) string {
+	switch strings.ToLower(source) {
+	case "udemy":
+		return "UDM+" + sourceID
+	case "pluralsight":
+		return "PLS+" + sourceID
+	default:
+		prefix := strings.ToUpper(source)
+		if prefix == "" {
+			prefix = "SRC"
+		}
+		return prefix + "+" + sourceID
+	}
 }
 
-func cleanStrings(in []string) []string {
-    out := make([]string, 0, len(in))
-    for _, s := range in {
-        s = strings.TrimSpace(s)
-        if s == "" {
-            continue
-        }
-        // avoid newlines / commas
-        s = strings.ReplaceAll(s, "\n", " ")
-        s = strings.ReplaceAll(s, "\r", " ")
-        out = append(out, s)
-    }
-    return out
+func floatToString(v float64) string {
+	// Ej: 1.5, 2, 0
+	return strconv.FormatFloat(v, 'f', -1, 64)
 }
+
+func firstNonEmpty(v string) string { return v }

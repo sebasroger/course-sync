@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
 
 type Config struct {
 	// Eightfold
@@ -17,6 +20,14 @@ type Config struct {
 	// Pluralsight
 	PluralsightBaseURL string
 	PluralsightToken   string
+
+	// SFTP (para subir el CSV)
+	SFTPHost                 string
+	SFTPPort                 int
+	SFTPUser                 string
+	SFTPPass                 string
+	SFTPDir                  string
+	SFTPInsecureIgnoreHostKey bool
 }
 
 func Load() Config {
@@ -35,6 +46,14 @@ func Load() Config {
 		// Pluralsight
 		PluralsightBaseURL: getenv("PLURALSIGHT_GQL_URL", "https://api.pluralsight.com/api"),
 		PluralsightToken:   os.Getenv("PLURALSIGHT_TOKEN"),
+
+		// SFTP
+		SFTPHost:                 getenv("SFTP_HOST", ""),
+		SFTPPort:                 getenvInt("SFTP_PORT", 22),
+		SFTPUser:                 getenv("SFTP_USER", ""),
+		SFTPPass:                 getenv("SFTP_PASS", ""),
+		SFTPDir:                  getenv("SFTP_DIR", "/upload"),
+		SFTPInsecureIgnoreHostKey: getenvBool("SFTP_INSECURE_IGNORE_HOSTKEY", true),
 	}
 }
 
@@ -44,4 +63,28 @@ func getenv(k, def string) string {
 		return def
 	}
 	return v
+}
+
+func getenvInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	i, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return i
+}
+
+func getenvBool(key string, def bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return def
+	}
+	return b
 }
