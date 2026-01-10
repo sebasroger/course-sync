@@ -42,6 +42,18 @@ type Course struct {
 	URL         string `json:"url"`
 	Description string `json:"description"`
 	Language    string `json:"language"`
+
+	// Optional fields (if the API returns them / you request them)
+	EstimatedContentLength int64      `json:"estimated_content_length"` // seconds
+	Locale                 LocaleValue `json:"locale"`
+	LastUpdateDate         string     `json:"last_update_date"`
+	Level                  string     `json:"level"`
+	Categories             Categories `json:"categories"`
+	Images                 struct {
+		Image480x270 string `json:"image_480x270"`
+		Image240x135 string `json:"image_240x135"`
+		Image125H    string `json:"image_125_H"`
+	} `json:"images"`
 }
 
 /* -------- API -------- */
@@ -49,7 +61,7 @@ type Course struct {
 func (c *Client) ListCourses(
 	ctx context.Context,
 	pageSize int,
-	maxPages int,
+	maxPages int, // if <= 0, fetch all pages
 ) ([]Course, error) {
 	var all []Course
 
@@ -63,7 +75,10 @@ func (c *Client) ListCourses(
 
 	next := u.String()
 
-	for page := 1; page <= maxPages && next != ""; page++ {
+	for page := 1; next != ""; page++ {
+		if maxPages > 0 && page > maxPages {
+			break
+		}
 		resp, err := c.fetchPage(ctx, next)
 		if err != nil {
 			return nil, err
