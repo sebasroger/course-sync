@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"time"
 )
@@ -21,7 +22,7 @@ func New(baseURL, token string) *Client {
 		BaseURL: baseURL,
 		Token:   token,
 		HTTP: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 2 * time.Minute,
 		},
 	}
 }
@@ -69,7 +70,6 @@ type CourseNode struct {
 	Language         string   `json:"language"`
 }
 
-// Query con variables: first + after
 const courseCatalogQuery = `
 query CourseCatalog($first: Int!, $after: String) {
   courseCatalog(first: $first, after: $after) {
@@ -98,6 +98,35 @@ query CourseCatalog($first: Int!, $after: String) {
 }`
 
 func (c *Client) ListCoursesPage(ctx context.Context, first int, after *string) (CourseCatalogGQLResponse, error) {
+	const maxAttempts = 8
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		out, retryable, err := c.listCoursesPageOnce(ctx, first, after)
+		if err == nil {
+			return out, nil
+		}
+		lastErr = err
+		if !retryable {
+			return CourseCatalogGQLResponse{}, err
+		}
+
+		sleep := 700*time.Millisecond*time.Duration(1<<(attempt-1)) + time.Duration(rand.Intn(500))*time.Millisecond
+		if sleep > 30*time.Second {
+			sleep = 30 * time.Second
+		}
+
+		select {
+		case <-time.After(sleep):
+		case <-ctx.Done():
+			return CourseCatalogGQLResponse{}, fmt.Errorf("pluralsight: context canceled while retrying: %w", ctx.Err())
+		}
+	}
+
+	return CourseCatalogGQLResponse{}, lastErr
+}
+
+func (c *Client) listCoursesPageOnce(ctx context.Context, first int, after *string) (CourseCatalogGQLResponse, bool, error) {
 	reqBody := graphQLRequest{
 		Query: courseCatalogQuery,
 		Variables: map[string]any{
@@ -112,12 +141,12 @@ func (c *Client) ListCoursesPage(ctx context.Context, first int, after *string) 
 	}
 	b, err := json.Marshal(reqBody)
 	if err != nil {
-		return CourseCatalogGQLResponse{}, fmt.Errorf("pluralsight: marshal gql request: %w", err)
+		return CourseCatalogGQLResponse{}, false, fmt.Errorf("pluralsight: marshal gql request: %w", err)
 	}
 
 	r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL, bytes.NewReader(b))
 	if err != nil {
-		return CourseCatalogGQLResponse{}, fmt.Errorf("pluralsight: build request: %w", err)
+		return CourseCatalogGQLResponse{}, false, fmt.Errorf("pluralsight: build request: %w", err)
 	}
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Accept", "application/json")
@@ -125,25 +154,31 @@ func (c *Client) ListCoursesPage(ctx context.Context, first int, after *string) 
 
 	resp, err := c.HTTP.Do(r)
 	if err != nil {
-		return CourseCatalogGQLResponse{}, fmt.Errorf("pluralsight: request failed: %w", err)
+		// red/timeouts -> retryable
+		return CourseCatalogGQLResponse{}, true, fmt.Errorf("pluralsight: request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return CourseCatalogGQLResponse{}, fmt.Errorf("pluralsight: read response body: %w", err)
+		return CourseCatalogGQLResponse{}, true, fmt.Errorf("pluralsight: read response body: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return CourseCatalogGQLResponse{}, fmt.Errorf("pluralsight gql failed: status=%d body=%s", resp.StatusCode, string(body))
+		// 429/5xx => retryable
+		if resp.StatusCode == 429 || (resp.StatusCode >= 500 && resp.StatusCode <= 599) {
+			return CourseCatalogGQLResponse{}, true, fmt.Errorf("pluralsight gql failed: status=%d body=%s", resp.StatusCode, string(body))
+		}
+		return CourseCatalogGQLResponse{}, false, fmt.Errorf("pluralsight gql failed: status=%d body=%s", resp.StatusCode, string(body))
 	}
 
 	var out CourseCatalogGQLResponse
 	if err := json.Unmarshal(body, &out); err != nil {
-		return CourseCatalogGQLResponse{}, fmt.Errorf("json parse error: %w body=%s", err, string(body))
+		return CourseCatalogGQLResponse{}, false, fmt.Errorf("json parse error: %w body=%s", err, string(body))
 	}
 	if len(out.Errors) > 0 {
-		return CourseCatalogGQLResponse{}, fmt.Errorf("pluralsight gql errors: %+v", out.Errors)
+		// a veces son temporales
+		return CourseCatalogGQLResponse{}, true, fmt.Errorf("pluralsight gql errors: %+v", out.Errors)
 	}
 
-	return out, nil
+	return out, false, nil
 }

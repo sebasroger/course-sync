@@ -4,10 +4,13 @@ import (
 	"context"
 	"flag"
 	"log"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"course-sync/internal/config"
+	"course-sync/internal/domain"
 	"course-sync/internal/export"
 	"course-sync/internal/providers/pluralsight"
 	"course-sync/internal/providers/udemy"
@@ -17,18 +20,25 @@ import (
 func main() {
 	var (
 		outPath    = flag.String("out", "COURSE-MAIN_ALL.csv", "output csv path")
-		udemyPages = flag.Int("udemy-max-pages", 1, "max pages to fetch from udemy")
-		psPages    = flag.Int("ps-max-pages", 1, "max pages to fetch from pluralsight")
+		udemyPages = flag.Int("udemy-max-pages", 1, "max pages to fetch from udemy (0 = all)")
+		psPages    = flag.Int("ps-max-pages", 1, "max pages to fetch from pluralsight (0 = all)")
 		pageSize   = flag.Int("page-size", 100, "page size for providers (when supported)")
-
 		uploadSFTP = flag.Bool("sftp", false, "upload the generated CSV via SFTP")
 	)
 	flag.Parse()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	// timeout “grande” para runs largos
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Hour)
 	defer cancel()
 
 	cfg := config.Load()
+
+	// asegura dir de salida
+	if dir := filepath.Dir(*outPath); dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	u := udemy.New(cfg.UdemyBaseURL, cfg.UdemyClientID, cfg.UdemyClientSecret)
 	p := pluralsight.New(cfg.PluralsightBaseURL, cfg.PluralsightToken)
@@ -38,9 +48,9 @@ func main() {
 		PageSize: *pageSize,
 		MaxPages: *udemyPages,
 	}
-	udCourses, err := udProv.ListCourses(ctx)
-	if err != nil {
-		log.Fatal(err)
+	udCourses, udErr := udProv.ListCourses(ctx)
+	if udErr != nil {
+		log.Printf("WARN: %v (continuo con %d cursos de Udemy)", udErr, len(udCourses))
 	}
 
 	psProv := pluralsight.Provider{
@@ -48,16 +58,23 @@ func main() {
 		First:    *pageSize,
 		MaxPages: *psPages,
 	}
-	psCourses, err := psProv.ListCourses(ctx)
-	if err != nil {
-		log.Fatal(err)
+	psCourses, psErr := psProv.ListCourses(ctx)
+	if psErr != nil {
+		log.Printf("WARN: %v (continuo con %d cursos de Pluralsight)", psErr, len(psCourses))
 	}
 
 	all := append(udCourses, psCourses...)
-	if err := export.WriteEightfoldCourseCSV(*outPath, all); err != nil {
+
+	filtered := filterCoursesByLang(all, map[string]bool{
+		"es": true,
+		"en": true,
+		"pt": true,
+	})
+
+	if err := export.WriteEightfoldCourseCSV(*outPath, filtered); err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("wrote %d courses to %s", len(all), *outPath)
+	log.Printf("wrote %d courses to %s (filtered from %d)", len(filtered), *outPath, len(all))
 
 	if *uploadSFTP {
 		remoteName := filepath.Base(*outPath)
@@ -71,7 +88,7 @@ func main() {
 			InsecureIgnoreHostKey: cfg.SFTPInsecureIgnoreHostKey,
 		}
 
-		upCtx, upCancel := context.WithTimeout(ctx, 2*time.Minute)
+		upCtx, upCancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer upCancel()
 
 		if err := sftpclient.UploadFile(upCtx, upCfg, *outPath, remoteName); err != nil {
@@ -79,4 +96,38 @@ func main() {
 		}
 		log.Printf("uploaded to sftp://%s:%d%s/%s", upCfg.Host, upCfg.Port, upCfg.RemoteDir, remoteName)
 	}
+}
+
+func filterCoursesByLang(courses []domain.UnifiedCourse, allowed map[string]bool) []domain.UnifiedCourse {
+	out := make([]domain.UnifiedCourse, 0, len(courses))
+	for _, c := range courses {
+		lang := normalizeLang(c.Language)
+		if allowed[lang] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func normalizeLang(lang string) string {
+	s := strings.TrimSpace(strings.ToLower(lang))
+	if s == "" {
+		return ""
+	}
+
+	s = strings.ReplaceAll(s, "_", "-")
+
+	switch s {
+	case "english":
+		return "en"
+	case "spanish", "español", "espanol":
+		return "es"
+	case "portuguese", "português", "portugues":
+		return "pt"
+	}
+
+	if len(s) >= 2 {
+		return s[:2]
+	}
+	return s
 }

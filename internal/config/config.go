@@ -33,18 +33,18 @@ type Config struct {
 func Load() Config {
 	return Config{
 		// Eightfold
-		EightfoldBaseURL:   getenv("EIGHTFOLD_BASE_URL", "https://apiv2.eightfold.ai"),
+		EightfoldBaseURL:   os.Getenv("EIGHTFOLD_BASE_URL"),
 		EightfoldBasicAuth: os.Getenv("EIGHTFOLD_BASIC_AUTH"),
 		EightfoldUser:      os.Getenv("EIGHTFOLD_USERNAME"),
 		EightfoldPass:      os.Getenv("EIGHTFOLD_PASSWORD"),
 
 		// Udemy
-		UdemyBaseURL:      getenv("UDEMY_BASE_URL", "https://femsa.udemy.com/api-2.0/organizations/243186"),
+		UdemyBaseURL:      os.Getenv("UDEMY_BASE_URL"),
 		UdemyClientID:     os.Getenv("UDEMY_CLIENT_ID"),
 		UdemyClientSecret: os.Getenv("UDEMY_CLIENT_SECRET"),
 
 		// Pluralsight
-		PluralsightBaseURL: getenv("PLURALSIGHT_GQL_URL", "https://api.pluralsight.com/api"),
+		PluralsightBaseURL: os.Getenv("PLURALSIGHT_GQL_URL"),
 		PluralsightToken:   os.Getenv("PLURALSIGHT_TOKEN"),
 
 		// SFTP
