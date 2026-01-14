@@ -11,6 +11,8 @@ type Config struct {
 	EightfoldBasicAuth string
 	EightfoldUser      string
 	EightfoldPass      string
+	// Optional: if provided, we skip password-grant auth and use this directly.
+	EightfoldBearerToken string
 
 	// Udemy
 	UdemyBaseURL      string
@@ -37,6 +39,7 @@ func Load() Config {
 		EightfoldBasicAuth: os.Getenv("EIGHTFOLD_BASIC_AUTH"),
 		EightfoldUser:      os.Getenv("EIGHTFOLD_USERNAME"),
 		EightfoldPass:      os.Getenv("EIGHTFOLD_PASSWORD"),
+		EightfoldBearerToken: os.Getenv("EIGHTFOLD_BEARER_TOKEN"),
 
 		// Udemy
 		UdemyBaseURL:      os.Getenv("UDEMY_BASE_URL"),
