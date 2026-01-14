@@ -29,7 +29,7 @@ func main() {
 
 		udemyPages = flag.Int("udemy-max-pages", 1, "max pages to fetch from udemy (0 = all)")
 		psPages    = flag.Int("ps-max-pages", 1, "max pages to fetch from pluralsight (0 = all)")
-		pageSize   = flag.Int("page-size", 100, "page size for providers (if supported)")
+		pageSize   = flag.Int("page-size", 100, "page size for providers (Udemy page_size / Pluralsight first). Udemy will be clamped to its max.")
 
 		udemyTags = flag.String("udemy-tags", "IC1,IC2,IC3,IC4", "eligibility tags for Udemy courses (comma-separated)")
 		psTags    = flag.String("pluralsight-tags", "IC5,IC6,IC7,M1,M2,M3", "eligibility tags for Pluralsight courses (comma-separated)")
@@ -41,7 +41,7 @@ func main() {
 	defer cancel()
 
 	cfg := config.Load()
-	
+
 	// timer
 	start := time.Now()
 	defer func() {

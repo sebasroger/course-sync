@@ -21,6 +21,7 @@ func (p Provider) ListCourses(ctx context.Context) ([]domain.UnifiedCourse, erro
 	if p.PageSize <= 0 {
 		p.PageSize = 100
 	}
+
 	courses, err := p.C.ListCourses(ctx, p.PageSize, p.MaxPages)
 	if err != nil {
 		return nil, err
@@ -42,7 +43,7 @@ func (p Provider) ListCourses(ctx context.Context) ([]domain.UnifiedCourse, erro
 			DurationHours: durationHoursFromSeconds(c.EstimatedContentLength),
 			Status:        "active",
 			PublishedDate: c.LastUpdateDate,
-			ImageURL:      firstNonEmpty(c.Images.Image480x270, c.Images.Image240x135, c.Images.Image125H),
+			ImageURL:      pickUdemyImageURL(c.Images),
 		})
 	}
 	return out, nil

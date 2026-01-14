@@ -51,23 +51,19 @@ type CourseCatalogGQLResponse struct {
 }
 
 type CourseNode struct {
-	ID               string   `json:"id"`
-	IDNum            int64    `json:"idNum"`
-	Slug             string   `json:"slug"`
-	URL              string   `json:"url"`
-	Title            string   `json:"title"`
-	Level            string   `json:"level"`
-	Description      string   `json:"description"`
-	ShortDescription string   `json:"shortDescription"`
-	CourseSeconds    float64  `json:"courseSeconds"`
-	Authors          []string `json:"authors"`
-	Free             bool     `json:"free"`
-	ReleasedDate     string   `json:"releasedDate"`
-	DisplayDate      string   `json:"displayDate"`
-	PublishedDate    string   `json:"publishedDate"`
-	AverageRating    float64  `json:"averageRating"`
-	NumberOfRatings  int      `json:"numberOfRatings"`
-	Language         string   `json:"language"`
+	ID               string  `json:"id"`
+	IDNum            int64   `json:"idNum"`
+	Slug             string  `json:"slug"`
+	URL              string  `json:"url"`
+	Title            string  `json:"title"`
+	Level            string  `json:"level"`
+	Description      string  `json:"description"`
+	ShortDescription string  `json:"shortDescription"`
+	CourseSeconds    float64 `json:"courseSeconds"`
+	ReleasedDate     string  `json:"releasedDate"`
+	DisplayDate      string  `json:"displayDate"`
+	PublishedDate    string  `json:"publishedDate"`
+	Language         string  `json:"language"`
 }
 
 const courseCatalogQuery = `
@@ -85,13 +81,9 @@ query CourseCatalog($first: Int!, $after: String) {
       description
       shortDescription
       courseSeconds
-      authors
-      free
       releasedDate
       displayDate
       publishedDate
-      averageRating
-      numberOfRatings
       language
     }
   }
