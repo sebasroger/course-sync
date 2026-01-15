@@ -51,6 +51,7 @@ type efCourse struct {
 	Operation string `xml:"operation,attr,omitempty"`
 
 	Title       string `xml:"title,omitempty"`
+	SystemID string `xml:"system_id,omitempty"`
 	LMSCourseID string `xml:"lms_course_id"`
 	Description string `xml:"description,omitempty"`
 
@@ -125,7 +126,7 @@ func WriteEFCourseXML(outPath string, courses []domain.UnifiedCourse, cfg Course
 	}
 
 	for _, c := range courses {
-		lmsID := buildSystemID(c.Source, c.SourceID)
+		systemID := buildSystemID(c.Source, c.SourceID)
 
 		lang := normalizeLang(c.Language)
 		provider := strings.Title(strings.ToLower(c.Source)) // "Udemy", "Pluralsight"
@@ -133,7 +134,8 @@ func WriteEFCourseXML(outPath string, courses []domain.UnifiedCourse, cfg Course
 		row := efCourse{
 			Operation:   strings.TrimSpace(cfg.Operation),
 			Title:       strings.TrimSpace(c.Title),
-			LMSCourseID: lmsID,
+			SystemID:    systemID,
+			LMSCourseID: strings.TrimSpace(c.SourceID),
 			Description: strings.TrimSpace(c.Description),
 
 			CourseType: "Course",

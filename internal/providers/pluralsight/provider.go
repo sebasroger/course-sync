@@ -46,7 +46,7 @@ func (p Provider) ListCourses(ctx context.Context) ([]domain.UnifiedCourse, erro
 		for _, n := range res.Data.CourseCatalog.Nodes {
 			out = append(out, domain.UnifiedCourse{
 				Source:        "pluralsight",
-				SourceID:      "PLS+" + stablePSID(n),
+				SourceID:      stablePSID(n),
 				Title:         n.Title,
 				Description:   firstNonEmpty(n.Description, n.ShortDescription),
 				CourseURL:     absolutizePSURL(n.URL),
