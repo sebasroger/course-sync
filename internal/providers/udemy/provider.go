@@ -33,7 +33,7 @@ func (p Provider) ListCourses(ctx context.Context) ([]domain.UnifiedCourse, erro
 	for _, c := range courses {
 		out = append(out, domain.UnifiedCourse{
 			Source:        "udemy",
-			SourceID:      fmt.Sprintf("UDM+%d", c.ID),
+			SourceID:      fmt.Sprintf("%d", c.ID),
 			Title:         c.Title,
 			Description:   c.Description,
 			CourseURL:     absolutizeURL(baseHost, c.URL),
