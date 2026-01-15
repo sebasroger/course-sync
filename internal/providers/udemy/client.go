@@ -63,17 +63,19 @@ type Course struct {
 	Description string `json:"description"`
 	Language    string `json:"language"`
 
-	EstimatedContentLength int64       `json:"estimated_content_length"`
-	Locale                 LocaleValue `json:"locale"`
-	LastUpdateDate         string      `json:"last_update_date"`
-	Level                  string      `json:"level"`
-	Categories             Categories  `json:"categories"`
-	  Images json.RawMessage `json:"images"`
+	EstimatedContentLength int64           `json:"estimated_content_length"`
+	Locale                 LocaleValue     `json:"locale"`
+	LastUpdateDate         string          `json:"last_update_date"`
+	Level                  string          `json:"level"`
+	Categories             Categories      `json:"categories"`
+	Images                 json.RawMessage `json:"images"`
 }
 
 /* -------- API -------- */
 
 func (c *Client) ListCourses(ctx context.Context, pageSize int, maxPages int) ([]Course, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	// Udemy limita a 100
 	if pageSize <= 0 || pageSize > 100 {
 		pageSize = 100
@@ -140,9 +142,15 @@ func (c *Client) ListCourses(ctx context.Context, pageSize int, maxPages int) ([
 	var firstErr error
 	var once sync.Once
 
+	// If one page fails, cancel the rest early.
+loop:
 	for page := 2; page <= totalPages; page++ {
+		select {
+		case <-ctx.Done():
+			break loop
+		case sem <- struct{}{}:
+		}
 		wg.Add(1)
-		sem <- struct{}{}
 		go func(p int) {
 			defer wg.Done()
 			defer func() { <-sem }()
@@ -151,14 +159,20 @@ func (c *Client) ListCourses(ctx context.Context, pageSize int, maxPages int) ([
 			select {
 			case <-tick.C:
 			case <-ctx.Done():
-				once.Do(func() { firstErr = ctx.Err() })
+				once.Do(func() {
+					firstErr = ctx.Err()
+					cancel()
+				})
 				return
 			}
 
 			pageURL := baseURL + fmt.Sprintf("&page=%d", p)
 			resp, err := c.fetchPageWithRetry(ctx, pageURL)
 			if err != nil {
-				once.Do(func() { firstErr = err })
+				once.Do(func() {
+					firstErr = err
+					cancel()
+				})
 				return
 			}
 
@@ -313,25 +327,25 @@ func isNetRetryable(err error) bool {
 }
 
 func pickUdemyImageURL(raw json.RawMessage) string {
-  if len(raw) == 0 {
-    return ""
-  }
-  var m map[string]any
-  if err := json.Unmarshal(raw, &m); err != nil {
-    return ""
-  }
-  // prioridad: 480x270
-  keys := []string{
-    "size_480x270", "image_480x270",
-    "size_240x135", "image_240x135",
-    "size_125_H",   "image_125_H",
-  }
-  for _, k := range keys {
-    if v, ok := m[k]; ok {
-      if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
-        return s
-      }
-    }
-  }
-  return ""
+	if len(raw) == 0 {
+		return ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return ""
+	}
+	// prioridad: 480x270
+	keys := []string{
+		"size_480x270", "image_480x270",
+		"size_240x135", "image_240x135",
+		"size_125_H", "image_125_H",
+	}
+	for _, k := range keys {
+		if v, ok := m[k]; ok {
+			if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+				return s
+			}
+		}
+	}
+	return ""
 }

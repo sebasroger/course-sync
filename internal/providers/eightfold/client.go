@@ -6,10 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"time"
+
+	"course-sync/internal/httpx"
 )
 
 const (
@@ -51,37 +52,39 @@ func (c *Client) UpsertCourse(ctx context.Context, course CourseUpsertRequest) e
 		return err
 	}
 
-	r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/api/v2/core/courses", bytes.NewReader(b))
+	_, _, err = httpx.DoWithRetry(
+		ctx,
+		c.HTTP,
+		func(ctx context.Context) (*http.Request, error) {
+			r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/api/v2/core/courses", bytes.NewReader(b))
+			if err != nil {
+				return nil, err
+			}
+			r.Header.Set("Content-Type", contentTypeJSON)
+			r.Header.Set("Accept", acceptJSON)
+			r.Header.Set("Authorization", "Bearer "+c.BearerToken)
+			return r, nil
+		},
+		httpx.DefaultRetryConfig(),
+	)
 	if err != nil {
-		return err
+		return fmt.Errorf("eightfold: upsert course failed: %w", err)
 	}
-
-	r.Header.Set("Content-Type", contentTypeJSON)
-	r.Header.Set("Accept", acceptJSON)
-	r.Header.Set("Authorization", "Bearer "+c.BearerToken)
-
-	resp, err := c.HTTP.Do(r)
-	if err != nil {
-		return fmt.Errorf("eightfold: upsert request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("eightfold: upsert read response body: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("upsert course failed: status=%d body=%s", resp.StatusCode, string(body))
-	}
-
 	return nil
 }
 
 func New(baseURL string) *Client {
+	tr := &http.Transport{
+		MaxIdleConns:        200,
+		MaxIdleConnsPerHost: 200,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+	}
 	return &Client{
 		BaseURL: baseURL,
 		HTTP: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   2 * time.Minute,
+			Transport: tr,
 		},
 	}
 }
@@ -107,37 +110,30 @@ func (c *Client) Authenticate(ctx context.Context, basicBase64 string, req AuthR
 		return err
 	}
 
-	r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/oauth/v1/authenticate", bytes.NewReader(b))
-	if err != nil {
-		return err
-	}
-
-	r.Header.Set("Content-Type", contentTypeJSON)
-	r.Header.Set("Accept", acceptJSON)
-	r.Header.Set("Authorization", "Basic "+basicBase64)
-
-	resp, err := c.HTTP.Do(r)
-	if err != nil {
-		return fmt.Errorf("eightfold: auth request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("eightfold: auth read response body: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("eightfold auth failed: status=%d body=%s", resp.StatusCode, string(body))
-	}
-
 	var ar AuthResponse
-	if err := json.Unmarshal(body, &ar); err != nil {
-		return err
+	err = httpx.DoJSON(
+		ctx,
+		c.HTTP,
+		func(ctx context.Context) (*http.Request, error) {
+			r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/oauth/v1/authenticate", bytes.NewReader(b))
+			if err != nil {
+				return nil, err
+			}
+			r.Header.Set("Content-Type", contentTypeJSON)
+			r.Header.Set("Accept", acceptJSON)
+			r.Header.Set("Authorization", "Basic "+basicBase64)
+			return r, nil
+		},
+		&ar,
+		httpx.DefaultRetryConfig(),
+	)
+	if err != nil {
+		return fmt.Errorf("eightfold auth failed: %w", err)
 	}
 
 	token := ar.Data.AccessToken
 	if token == "" {
-		return fmt.Errorf("eightfold auth: token not found. raw response=%s", string(body))
+		return fmt.Errorf("eightfold auth: token not found")
 	}
 	c.BearerToken = token
 	return nil
@@ -168,30 +164,24 @@ func (c *Client) ListCourses(ctx context.Context, limit int) ([]map[string]any, 
 	}
 	u.RawQuery = q.Encode()
 
-	r, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	r.Header.Set("Accept", "application/json")
-	r.Header.Set("Authorization", "Bearer "+c.BearerToken)
-
-	resp, err := c.HTTP.Do(r)
-	if err != nil {
-		return nil, fmt.Errorf("eightfold: list request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("eightfold: list read response body: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("list courses failed: status=%d body=%s", resp.StatusCode, string(body))
-	}
-
 	var out ListCoursesResponse
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fmt.Errorf("json parse error: %w body=%s", err, string(body))
+	err = httpx.DoJSON(
+		ctx,
+		c.HTTP,
+		func(ctx context.Context) (*http.Request, error) {
+			r, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+			if err != nil {
+				return nil, err
+			}
+			r.Header.Set("Accept", "application/json")
+			r.Header.Set("Authorization", "Bearer "+c.BearerToken)
+			return r, nil
+		},
+		&out,
+		httpx.DefaultRetryConfig(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("eightfold: list courses failed: %w", err)
 	}
 
 	return out.Data, nil

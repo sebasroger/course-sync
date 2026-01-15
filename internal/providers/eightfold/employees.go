@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"course-sync/internal/httpx"
 )
 
 // Response shape #1 (common in Eightfold): {"data": [...], "meta": {...}}
@@ -42,8 +43,8 @@ type employeesErrorResponse struct {
 // Paginación implementada:
 // 1) Primera llamada SIN params.
 // 2) Si viene meta (totalCount/pageTotalCount), pagina con start+limit:
-//    - start = pageTotalCount (offset)
-//    - limit = pageTotalCount (cap a 100 por seguridad)
+//   - start = pageTotalCount (offset)
+//   - limit = pageTotalCount (cap a 100 por seguridad)
 //
 // También soporta results/next si el endpoint devuelve ese formato.
 func (c *Client) ListAllEmployees(ctx context.Context, pageSizeHint int) ([]map[string]any, error) {
@@ -169,24 +170,27 @@ func (c *Client) ListAllEmployees(ctx context.Context, pageSizeHint int) ([]map[
 }
 
 func (c *Client) getRaw(ctx context.Context, urlStr string) ([]byte, int, error) {
-	r, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
-	if err != nil {
-		return nil, 0, err
-	}
-	r.Header.Set("Accept", "application/json")
-	r.Header.Set("Authorization", "Bearer "+c.BearerToken)
-
-	resp, err := c.HTTP.Do(r)
+	resp, body, err := httpx.DoWithRetry(
+		ctx,
+		c.HTTP,
+		func(ctx context.Context) (*http.Request, error) {
+			r, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
+			if err != nil {
+				return nil, err
+			}
+			r.Header.Set("Accept", "application/json")
+			r.Header.Set("Authorization", "Bearer "+c.BearerToken)
+			return r, nil
+		},
+		httpx.DefaultRetryConfig(),
+	)
 	if err != nil {
 		return nil, 0, fmt.Errorf("eightfold: request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, resp.StatusCode, fmt.Errorf("eightfold: read response body: %w", err)
+	if resp == nil {
+		return body, 0, nil
 	}
-	return b, resp.StatusCode, nil
+	return body, resp.StatusCode, nil
 }
 
 func max(a, b int) int {
