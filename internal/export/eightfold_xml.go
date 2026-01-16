@@ -51,6 +51,7 @@ type efCourse struct {
 	Operation string `xml:"operation,attr,omitempty"`
 
 	Title       string `xml:"title,omitempty"`
+	SystemID    string `xml:"system_id,omitempty"`
 	LMSCourseID string `xml:"lms_course_id"`
 	Description string `xml:"description,omitempty"`
 
@@ -69,7 +70,7 @@ type efCourse struct {
 
 	SkillsList *efSkillsList `xml:"skills_list,omitempty"`
 
-	CustomInfo          *efCustomInfo          `xml:"custom_info,omitempty"`
+	CustomInfo           *efCustomInfo           `xml:"custom_info,omitempty"`
 	CustomMultiValueList *efCustomMultiValueList `xml:"custom_multi_value_list,omitempty"`
 }
 
@@ -92,8 +93,8 @@ type efCustomMultiValueList struct {
 }
 
 type efCustomMVField struct {
-	FieldName string    `xml:"field_name"`
-	DataType  string    `xml:"data_type"`
+	FieldName string     `xml:"field_name"`
+	DataType  string     `xml:"data_type"`
 	DataList  efDataList `xml:"data_list"`
 }
 
@@ -104,7 +105,7 @@ type efDataList struct {
 type CourseTagConfig struct {
 	// If Operation is set, it will be included as EF_Course @operation="...".
 	Operation string
-
+	SystemID  string
 	// eligibility_tags custom field (multi value list)
 	EligibilityTagsFieldName string // default: "eligibility_tags"
 
@@ -125,7 +126,7 @@ func WriteEFCourseXML(outPath string, courses []domain.UnifiedCourse, cfg Course
 	}
 
 	for _, c := range courses {
-		lmsID := buildSystemID(c.Source, c.SourceID)
+		systemID := buildSystemID(c.Source, c.SourceID)
 
 		lang := normalizeLang(c.Language)
 		provider := strings.Title(strings.ToLower(c.Source)) // "Udemy", "Pluralsight"
@@ -133,7 +134,8 @@ func WriteEFCourseXML(outPath string, courses []domain.UnifiedCourse, cfg Course
 		row := efCourse{
 			Operation:   strings.TrimSpace(cfg.Operation),
 			Title:       strings.TrimSpace(c.Title),
-			LMSCourseID: lmsID,
+			SystemID:    systemID,
+			LMSCourseID: strings.TrimSpace(c.SourceID),
 			Description: strings.TrimSpace(c.Description),
 
 			CourseType: "Course",
