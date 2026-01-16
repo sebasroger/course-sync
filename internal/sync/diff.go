@@ -9,32 +9,48 @@ import (
 )
 
 // Diff compares provider courses (Udemy + Pluralsight) with the current Eightfold catalog.
+//
+// Matching is done by (provider, lms_course_id), because in this tenant Eightfold stores
+// the provider's course id in `lmsCourseId` (e.g. Udemy numeric id) and keeps `systemId`
+// as a fixed integration id (e.g. "successfactors").
+//
 // Returns:
 // - create: present in providers but not in Eightfold
 // - update: present in both but changed
-// - del: present in Eightfold but not in providers (only for managed IDs, i.e. UDM+/PLS+)
+// - del: present in Eightfold but not in providers (only for managed providers)
 func Diff(provider []domain.UnifiedCourse, eightfold []EFCourse) (create []domain.UnifiedCourse, update []domain.UnifiedCourse, del []export.DeleteCourse) {
-	provByID := map[string]domain.UnifiedCourse{}
+	provByKey := map[string]domain.UnifiedCourse{}
 	for _, c := range provider {
-		id := BuildSystemID(c.Source, c.SourceID)
-		if strings.TrimSpace(id) == "" {
+		src := normProvider(c.Source)
+		if src != "udemy" && src != "pluralsight" {
 			continue
 		}
-		provByID[id] = c
+		lms := normalizeLMSID(src, c.SourceID)
+		if lms == "" {
+			continue
+		}
+		provByKey[key(src, lms)] = c
 	}
 
-	efByID := map[string]EFCourse{}
+	efByKey := map[string]EFCourse{}
 	for _, c := range eightfold {
-		id := strings.TrimSpace(firstNonEmpty(c.LMSCourseID, c.SystemID))
-		if id == "" {
+		src := normProvider(c.Provider)
+		if src == "" {
+			src = providerFromPrefixedID(c.LMSCourseID)
+		}
+		if src != "udemy" && src != "pluralsight" {
 			continue
 		}
-		efByID[id] = c
+		lms := normalizeLMSID(src, c.LMSCourseID)
+		if lms == "" {
+			continue
+		}
+		efByKey[key(src, lms)] = c
 	}
 
 	// create/update
-	for id, pc := range provByID {
-		efc, ok := efByID[id]
+	for k, pc := range provByKey {
+		efc, ok := efByKey[k]
 		if !ok {
 			create = append(create, pc)
 			continue
@@ -45,14 +61,58 @@ func Diff(provider []domain.UnifiedCourse, eightfold []EFCourse) (create []domai
 	}
 
 	// deletes
-	for id, efc := range efByID {
-		if _, ok := provByID[id]; ok {
+	for k, efc := range efByKey {
+		if _, ok := provByKey[k]; ok {
+			continue
+		}
+		// IMPORTANT: delete xml must use Eightfold's stored lms_course_id value.
+		id := strings.TrimSpace(efc.LMSCourseID)
+		if id == "" {
 			continue
 		}
 		del = append(del, export.DeleteCourse{Title: strings.TrimSpace(efc.Title), LMSCourseID: id})
 	}
 
 	return create, update, del
+}
+
+func key(provider, lmsID string) string {
+	return provider + "|" + lmsID
+}
+
+func normProvider(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+func providerFromPrefixedID(id string) string {
+	u := strings.ToUpper(strings.TrimSpace(id))
+	if strings.HasPrefix(u, "UDM+") {
+		return "udemy"
+	}
+	if strings.HasPrefix(u, "PLS+") {
+		return "pluralsight"
+	}
+	return ""
+}
+
+func normalizeLMSID(provider, id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+
+	u := strings.ToUpper(id)
+	switch provider {
+	case "udemy":
+		if strings.HasPrefix(u, "UDM+") {
+			return strings.TrimSpace(id[4:])
+		}
+	case "pluralsight":
+		if strings.HasPrefix(u, "PLS+") {
+			return strings.TrimSpace(id[4:])
+		}
+	}
+	return id
 }
 
 func needsUpdate(p domain.UnifiedCourse, e EFCourse) bool {

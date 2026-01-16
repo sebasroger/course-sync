@@ -28,8 +28,15 @@ import (
 
 func main() {
 	var (
-		outUpsert = flag.String("out-upsert", "out/ef_course_update.xml", "output xml path for upserts (Eightfold ef_course_add/update format)")
+		// Backward compatible combined file (create+update). If provided, we also write it.
+		outUpsert = flag.String("out-upsert", "", "(deprecated) output xml path for combined upserts (creates+updates). If set, we also write this file")
+
+		// New: separate files.
+		outAdd    = flag.String("out-add", "out/ef_course_add.xml", "output xml path for creates (Eightfold ef_course_add format)")
+		outUpdate = flag.String("out-update", "out/ef_course_update.xml", "output xml path for updates (Eightfold ef_course_update format)")
 		outDelete = flag.String("out-delete", "out/ef_course_delete.xml", "output xml path for deletes (Eightfold ef_course_delete format)")
+
+		systemID = flag.String("system-id", "successfactors", "value to write into <system_id>. Use empty string to keep legacy prefixed ids")
 
 		udemyPages = flag.Int("udemy-max-pages", 1, "max pages to fetch from udemy (0 = all)")
 		psPages    = flag.Int("ps-max-pages", 1, "max pages to fetch from pluralsight (0 = all)")
@@ -112,11 +119,9 @@ func main() {
 		return
 	}
 
-	// Upsert XML (create + update)
-	upserts := append(create, update...)
-
 	tagCfg := export.CourseTagConfig{
 		Operation:                strings.TrimSpace(*op),
+		SystemID:                 strings.TrimSpace(*systemID),
 		EligibilityTagsFieldName: "eligibility_tags",
 		TagsBySource: map[string][]string{
 			"udemy":       splitCSV(*udemyTags),
@@ -124,12 +129,23 @@ func main() {
 		},
 	}
 
-	if err := export.WriteEFCourseXML(*outUpsert, upserts, tagCfg); err != nil {
+	// Separate files (recommended)
+	if err := export.WriteEFCourseXML(*outAdd, create, tagCfg); err != nil {
+		log.Fatal(err)
+	}
+	if err := export.WriteEFCourseXML(*outUpdate, update, tagCfg); err != nil {
+		log.Fatal(err)
+	}
+	if err := export.WriteEFCourseDeleteXML(*outDelete, del); err != nil {
 		log.Fatal(err)
 	}
 
-	if err := export.WriteEFCourseDeleteXML(*outDelete, del); err != nil {
-		log.Fatal(err)
+	// Optional combined file for backward compatibility
+	if strings.TrimSpace(*outUpsert) != "" {
+		upserts := append(create, update...)
+		if err := export.WriteEFCourseXML(*outUpsert, upserts, tagCfg); err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 

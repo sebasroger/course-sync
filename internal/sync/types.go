@@ -5,6 +5,7 @@ package sync
 type EFCourse struct {
 	SystemID      string  `json:"systemId"`
 	LMSCourseID   string  `json:"lmsCourseId"`
+	Provider      string  `json:"provider"`
 	Title         string  `json:"title"`
 	Description   string  `json:"description"`
 	CourseURL     string  `json:"courseUrl"`

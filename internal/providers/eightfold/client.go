@@ -167,7 +167,7 @@ func (c *Client) ListCoursesPage(ctx context.Context, pageStartIndex int, limit 
 		q.Set("limit", fmt.Sprintf("%d", limit))
 	}
 	if pageStartIndex > 0 {
-		// This name matches the response meta key.
+		// Tenants differ on the paging parameter name; try both.
 		q.Set("start", fmt.Sprintf("%d", pageStartIndex))
 	}
 	u.RawQuery = q.Encode()

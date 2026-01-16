@@ -105,7 +105,11 @@ type efDataList struct {
 type CourseTagConfig struct {
 	// If Operation is set, it will be included as EF_Course @operation="...".
 	Operation string
-	SystemID  string
+
+	// SystemID to write into <system_id>. If empty, we fall back to the legacy
+	// behavior of generating a prefixed id (e.g. UDM+123 / PLS+abc).
+	SystemID string
+
 	// eligibility_tags custom field (multi value list)
 	EligibilityTagsFieldName string // default: "eligibility_tags"
 
@@ -126,7 +130,10 @@ func WriteEFCourseXML(outPath string, courses []domain.UnifiedCourse, cfg Course
 	}
 
 	for _, c := range courses {
-		systemID := buildSystemID(c.Source, c.SourceID)
+		systemID := strings.TrimSpace(cfg.SystemID)
+		if systemID == "" {
+			systemID = buildSystemID(c.Source, c.SourceID)
+		}
 
 		lang := normalizeLang(c.Language)
 		provider := strings.Title(strings.ToLower(c.Source)) // "Udemy", "Pluralsight"

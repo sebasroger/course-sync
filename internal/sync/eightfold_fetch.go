@@ -72,9 +72,17 @@ func FetchEightfoldCourses(ctx context.Context, ef *eightfold.Client, limit int,
 func filterManagedEightfold(in []EFCourse) []EFCourse {
 	out := make([]EFCourse, 0, len(in))
 	for _, c := range in {
+		// Prefer provider filtering (what Eightfold actually returns).
+		p := strings.ToLower(strings.TrimSpace(c.Provider))
+		switch p {
+		case "udemy", "pluralsight":
+			out = append(out, c)
+			continue
+		}
+
+		// Backward compat for older mocks that didn't include provider.
 		id := strings.TrimSpace(firstNonEmpty(c.LMSCourseID, c.SystemID))
-		// Only manage Udemy/Pluralsight by default.
-		if strings.HasPrefix(id, "UDM+") || strings.HasPrefix(id, "PLS+") {
+		if strings.HasPrefix(strings.ToUpper(id), "UDM+") || strings.HasPrefix(strings.ToUpper(id), "PLS+") {
 			out = append(out, c)
 		}
 	}
@@ -87,6 +95,7 @@ func mapEightfoldRows(rows []map[string]any) []EFCourse {
 		c := EFCourse{
 			SystemID:      getString(r, "systemId", "system_id"),
 			LMSCourseID:   getString(r, "lmsCourseId", "lms_course_id"),
+			Provider:      getString(r, "provider"),
 			Title:         getString(r, "title"),
 			Description:   getString(r, "description"),
 			CourseURL:     getString(r, "courseUrl", "course_url"),
