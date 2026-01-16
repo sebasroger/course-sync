@@ -142,25 +142,33 @@ func (c *Client) Authenticate(ctx context.Context, basicBase64 string, req AuthR
 
 type ListCoursesResponse struct {
 	Data []map[string]any `json:"data"`
-	Meta struct {
-		PageStartIndex int `json:"pageStartIndex"`
-		PageTotalCount int `json:"pageTotalCount"`
-		TotalCount     int `json:"totalCount"`
-	} `json:"meta"`
+	Meta ListCoursesMeta  `json:"meta"`
 }
 
-func (c *Client) ListCourses(ctx context.Context, limit int) ([]map[string]any, error) {
+type ListCoursesMeta struct {
+	PageStartIndex int `json:"pageStartIndex"`
+	PageTotalCount int `json:"pageTotalCount"`
+	TotalCount     int `json:"totalCount"`
+}
+
+// ListCoursesPage lists one page of courses. It uses best-effort pagination:
+// some Eightfold tenants honor `pageStartIndex`; if yours doesn't, you can still use ListCourses(limit).
+func (c *Client) ListCoursesPage(ctx context.Context, pageStartIndex int, limit int) ([]map[string]any, ListCoursesMeta, error) {
 	if c.BearerToken == "" {
-		return nil, errors.New("eightfold: missing bearer token (call Authenticate first)")
+		return nil, ListCoursesMeta{}, errors.New("eightfold: missing bearer token (call Authenticate first)")
 	}
 
 	u, err := url.Parse(c.BaseURL + "/api/v2/core/courses")
 	if err != nil {
-		return nil, fmt.Errorf("eightfold: invalid base url: %w", err)
+		return nil, ListCoursesMeta{}, fmt.Errorf("eightfold: invalid base url: %w", err)
 	}
 	q := u.Query()
 	if limit > 0 {
 		q.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	if pageStartIndex > 0 {
+		// Tenants differ on the paging parameter name; try both.
+		q.Set("start", fmt.Sprintf("%d", pageStartIndex))
 	}
 	u.RawQuery = q.Encode()
 
@@ -181,9 +189,14 @@ func (c *Client) ListCourses(ctx context.Context, limit int) ([]map[string]any, 
 		httpx.DefaultRetryConfig(),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("eightfold: list courses failed: %w", err)
+		return nil, ListCoursesMeta{}, fmt.Errorf("eightfold: list courses failed: %w", err)
 	}
 
-	return out.Data, nil
+	return out.Data, out.Meta, nil
+}
+
+func (c *Client) ListCourses(ctx context.Context, limit int) ([]map[string]any, error) {
+	rows, _, err := c.ListCoursesPage(ctx, 0, limit)
+	return rows, err
 
 }

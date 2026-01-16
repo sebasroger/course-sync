@@ -70,7 +70,7 @@ type efCourse struct {
 
 	SkillsList *efSkillsList `xml:"skills_list,omitempty"`
 
-	CustomInfo          *efCustomInfo          `xml:"custom_info,omitempty"`
+	CustomInfo           *efCustomInfo           `xml:"custom_info,omitempty"`
 	CustomMultiValueList *efCustomMultiValueList `xml:"custom_multi_value_list,omitempty"`
 }
 
@@ -93,8 +93,8 @@ type efCustomMultiValueList struct {
 }
 
 type efCustomMVField struct {
-	FieldName string    `xml:"field_name"`
-	DataType  string    `xml:"data_type"`
+	FieldName string     `xml:"field_name"`
+	DataType  string     `xml:"data_type"`
 	DataList  efDataList `xml:"data_list"`
 }
 
@@ -105,6 +105,10 @@ type efDataList struct {
 type CourseTagConfig struct {
 	// If Operation is set, it will be included as EF_Course @operation="...".
 	Operation string
+
+	// SystemID to write into <system_id>. If empty, we fall back to the legacy
+	// behavior of generating a prefixed id (e.g. UDM+123 / PLS+abc).
+	SystemID string
 
 	// eligibility_tags custom field (multi value list)
 	EligibilityTagsFieldName string // default: "eligibility_tags"
