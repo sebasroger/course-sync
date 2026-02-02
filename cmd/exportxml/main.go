@@ -42,13 +42,11 @@ func main() {
 
 	cfg := config.Load()
 
-	// timer
 	start := time.Now()
 	defer func() {
 		log.Printf("job finished in %s", time.Since(start))
 	}()
 
-	// Providers
 	u := udemy.New(cfg.UdemyBaseURL, cfg.UdemyClientID, cfg.UdemyClientSecret)
 	p := pluralsight.New(cfg.PluralsightBaseURL, cfg.PluralsightToken)
 
@@ -93,7 +91,6 @@ func main() {
 		all = append(all, r.courses...)
 	}
 
-	// Filter languages (en/es/pt)
 	filtered := filterCoursesByLang(all, map[string]bool{
 		"es": true,
 		"en": true,
@@ -132,6 +129,9 @@ func main() {
 			Pass:                  cfg.SFTPPass,
 			RemoteDir:             cfg.SFTPDir,
 			InsecureIgnoreHostKey: cfg.SFTPInsecureIgnoreHostKey,
+			HostKey:               cfg.SFTPHostKey, // <- ESTE
+			KeyPath:               cfg.SFTPKeyPath,
+			KeyPassphrase:         cfg.SFTPKeyPassphrase,
 		}
 
 		upCtx, upCancel := context.WithTimeout(rootCtx, 5*time.Minute)
