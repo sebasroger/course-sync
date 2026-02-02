@@ -11,7 +11,6 @@ type Config struct {
 	EightfoldBasicAuth string
 	EightfoldUser      string
 	EightfoldPass      string
-	// Optional: if provided, we skip password-grant auth and use this directly.
 	EightfoldBearerToken string
 
 	// Udemy
@@ -23,22 +22,25 @@ type Config struct {
 	PluralsightBaseURL string
 	PluralsightToken   string
 
-	// SFTP (para subir el CSV)
-	SFTPHost                 string
-	SFTPPort                 int
-	SFTPUser                 string
-	SFTPPass                 string
-	SFTPDir                  string
+	// SFTP
+	SFTPHost                  string
+	SFTPPort                  int
+	SFTPUser                  string
+	SFTPPass                  string
+	SFTPDir                   string
 	SFTPInsecureIgnoreHostKey bool
+	SFTPHostKey               string
+	SFTPKeyPath               string
+	SFTPKeyPassphrase         string
 }
 
 func Load() Config {
 	return Config{
 		// Eightfold
-		EightfoldBaseURL:   os.Getenv("EIGHTFOLD_BASE_URL"),
-		EightfoldBasicAuth: os.Getenv("EIGHTFOLD_BASIC_AUTH"),
-		EightfoldUser:      os.Getenv("EIGHTFOLD_USERNAME"),
-		EightfoldPass:      os.Getenv("EIGHTFOLD_PASSWORD"),
+		EightfoldBaseURL:     os.Getenv("EIGHTFOLD_BASE_URL"),
+		EightfoldBasicAuth:   os.Getenv("EIGHTFOLD_BASIC_AUTH"),
+		EightfoldUser:        os.Getenv("EIGHTFOLD_USERNAME"),
+		EightfoldPass:        os.Getenv("EIGHTFOLD_PASSWORD"),
 		EightfoldBearerToken: os.Getenv("EIGHTFOLD_BEARER_TOKEN"),
 
 		// Udemy
@@ -51,12 +53,15 @@ func Load() Config {
 		PluralsightToken:   os.Getenv("PLURALSIGHT_TOKEN"),
 
 		// SFTP
-		SFTPHost:                 getenv("SFTP_HOST", ""),
-		SFTPPort:                 getenvInt("SFTP_PORT", 22),
-		SFTPUser:                 getenv("SFTP_USER", ""),
-		SFTPPass:                 getenv("SFTP_PASS", ""),
-		SFTPDir:                  getenv("SFTP_DIR", "/upload"),
+		SFTPHost:                  getenv("SFTP_HOST", ""),
+		SFTPPort:                  getenvInt("SFTP_PORT", 22),
+		SFTPUser:                  getenv("SFTP_USER", ""),
+		SFTPPass:                  getenv("SFTP_PASS", ""),
+		SFTPDir:                   getenv("SFTP_DIR", "/upload"),
 		SFTPInsecureIgnoreHostKey: getenvBool("SFTP_INSECURE_IGNORE_HOSTKEY", true),
+		SFTPHostKey:               os.Getenv("SFTP_HOST_KEY"),
+		SFTPKeyPath:               os.Getenv("SFTP_KEY_PATH"),
+		SFTPKeyPassphrase:         os.Getenv("SFTP_KEY_PASSPHRASE"),
 	}
 }
 
