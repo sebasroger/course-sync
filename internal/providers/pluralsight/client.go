@@ -181,3 +181,154 @@ func (c *Client) listCoursesPageOnce(ctx context.Context, first int, after *stri
 
 	return out, false, 0, nil
 }
+
+type UserNode struct {
+	PsUserID  string `json:"psUserId"`
+	Email     string `json:"email"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+}
+
+type getUserResponse struct {
+	Data struct {
+		Users struct {
+			Nodes []UserNode `json:"nodes"`
+		} `json:"users"`
+	} `json:"data"`
+	Errors []graphQLError `json:"errors"`
+}
+
+const getUserByEmailQuery = `
+query GetUserByEmail($emails: [String]) {
+  users(filter: { emails: $emails }) {
+    nodes {
+      psUserId
+      email
+      firstName
+      lastName
+    }
+  }
+}`
+
+func (c *Client) GetUserByEmail(ctx context.Context, email string) (*UserNode, error) {
+	reqBody := graphQLRequest{
+		Query: getUserByEmailQuery,
+		Variables: map[string]any{
+			"emails": []string{email},
+		},
+	}
+	var resp getUserResponse
+	if err := c.doGraphQL(ctx, reqBody, &resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Errors) > 0 {
+		return nil, fmt.Errorf("pluralsight gql errors: %+v", resp.Errors)
+	}
+	if len(resp.Data.Users.Nodes) == 0 {
+		return nil, nil // Not found
+	}
+	return &resp.Data.Users.Nodes[0], nil
+}
+
+type CourseProgressNode struct {
+	PsUserID            string  `json:"psUserId"`
+	CourseID            string  `json:"courseId"`
+	CourseIDNum         int64   `json:"courseIdNum"`
+	PercentComplete     float64 `json:"percentComplete"`
+	IsCourseCompleted   bool    `json:"isCourseCompleted"`
+	CompletedOn         string  `json:"completedOn"`
+	CourseSeconds       float64 `json:"courseSeconds"`
+	TotalWatchedSeconds float64 `json:"totalWatchedSeconds"`
+	TotalClipsWatched   int     `json:"totalClipsWatched"`
+	FirstViewedClipOn   string  `json:"firstViewedClipOn"`
+	LastViewedClipOn    string  `json:"lastViewedClipOn"`
+	PlanID              string  `json:"planId"`
+	UpdatedOn           string  `json:"updatedOn"`
+	Course              struct {
+		Title string `json:"title"`
+	} `json:"course"`
+}
+
+type courseProgressResponse struct {
+	Data struct {
+		CourseProgress struct {
+			Nodes []CourseProgressNode `json:"nodes"`
+		} `json:"courseProgress"`
+	} `json:"data"`
+	Errors []graphQLError `json:"errors"`
+}
+
+const courseProgressQuery = `
+query courseProgress($ids:[ID]) {
+  courseProgress (filter: { psUserIds: $ids }) {
+    nodes {
+      psUserId
+      courseId
+      courseIdNum
+      percentComplete
+      isCourseCompleted
+      completedOn
+      courseSeconds
+      totalWatchedSeconds
+      totalClipsWatched
+      firstViewedClipOn
+      lastViewedClipOn
+      planId
+      updatedOn
+      course {
+        title
+      }
+    }
+  }
+}`
+
+func (c *Client) GetCourseProgress(ctx context.Context, psUserID string) ([]CourseProgressNode, error) {
+	reqBody := graphQLRequest{
+		Query: courseProgressQuery,
+		Variables: map[string]any{
+			"ids": []string{psUserID},
+		},
+	}
+	var resp courseProgressResponse
+	if err := c.doGraphQL(ctx, reqBody, &resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Errors) > 0 {
+		return nil, fmt.Errorf("pluralsight gql errors: %+v", resp.Errors)
+	}
+	return resp.Data.CourseProgress.Nodes, nil
+}
+
+func (c *Client) doGraphQL(ctx context.Context, reqBody graphQLRequest, out any) error {
+	b, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("marshal gql request: %w", err)
+	}
+
+	r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL, bytes.NewReader(b))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Accept", "application/json")
+	r.Header.Set("Authorization", "Bearer "+c.Token)
+
+	resp, err := c.HTTP.Do(r)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response body: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("pluralsight gql failed: status=%d body=%s", resp.StatusCode, string(body))
+	}
+
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("json parse error: %w body=%s", err, string(body))
+	}
+	return nil
+}

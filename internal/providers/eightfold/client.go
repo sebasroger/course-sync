@@ -73,6 +73,53 @@ func (c *Client) UpsertCourse(ctx context.Context, course CourseUpsertRequest) e
 	return nil
 }
 
+type CourseAttendance struct {
+	LmsCourseID          string  `json:"lmsCourseId"`
+	Title                string  `json:"title"`
+	PercentageCompletion float64 `json:"percentageCompletion"`
+	Status               string  `json:"status"` // "in_progress" or "completed"
+	StartTs              int64   `json:"startTs,omitempty"`
+	DurationHours        float64 `json:"durationHours"`
+	Provider             string  `json:"provider"`
+}
+
+type UpdateEmployeeRequest struct {
+	CourseAttendance []CourseAttendance `json:"courseAttendance"`
+}
+
+func (c *Client) UpdateEmployee(ctx context.Context, profileID string, req UpdateEmployeeRequest) error {
+	if c.BearerToken == "" {
+		return errors.New("eightfold: missing bearer token")
+	}
+
+	b, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+
+	urlStr := fmt.Sprintf("%s/api/v2/core/employees/%s", c.BaseURL, profileID)
+
+	_, _, err = httpx.DoWithRetry(
+		ctx,
+		c.HTTP,
+		func(ctx context.Context) (*http.Request, error) {
+			r, err := http.NewRequestWithContext(ctx, http.MethodPatch, urlStr, bytes.NewReader(b))
+			if err != nil {
+				return nil, err
+			}
+			r.Header.Set("Content-Type", contentTypeJSON)
+			r.Header.Set("Accept", acceptJSON)
+			r.Header.Set("Authorization", "Bearer "+c.BearerToken)
+			return r, nil
+		},
+		httpx.DefaultRetryConfig(),
+	)
+	if err != nil {
+		return fmt.Errorf("eightfold: update employee failed: %w", err)
+	}
+	return nil
+}
+
 func New(baseURL string) *Client {
 	tr := &http.Transport{
 		MaxIdleConns:        200,
