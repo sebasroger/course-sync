@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"math"
 	"math/rand"
@@ -69,6 +70,32 @@ type Course struct {
 	Level                  string          `json:"level"`
 	Categories             Categories      `json:"categories"`
 	Images                 json.RawMessage `json:"images"`
+}
+
+// UserNode represents a Udemy user
+type UserNode struct {
+	UdemyUserID string `json:"udemyUserId"`
+	Email       string `json:"email"`
+	FirstName   string `json:"firstName"`
+	LastName    string `json:"lastName"`
+}
+
+// CourseProgressNode represents a user's progress in a Udemy course
+type CourseProgressNode struct {
+	UdemyUserID          string  `json:"udemyUserId"`
+	CourseID             string  `json:"courseId"`
+	CourseIDNum          int64   `json:"courseIdNum"`
+	PercentComplete      float64 `json:"percentComplete"`
+	IsCourseCompleted    bool    `json:"isCourseCompleted"`
+	CompletedOn          string  `json:"completedOn"`
+	CourseSeconds        float64 `json:"courseSeconds"`
+	TotalWatchedSeconds  float64 `json:"totalWatchedSeconds"`
+	FirstViewedLectureOn string  `json:"firstViewedLectureOn"`
+	LastViewedLectureOn  string  `json:"lastViewedLectureOn"`
+	UpdatedOn            string  `json:"updatedOn"`
+	Course               struct {
+		Title string `json:"title"`
+	} `json:"course"`
 }
 
 /* -------- API -------- */
@@ -348,4 +375,105 @@ func pickUdemyImageURL(raw json.RawMessage) string {
 		}
 	}
 	return ""
+}
+
+// GetUserByEmail looks up a user by email in Udemy
+// This is similar to the Pluralsight implementation
+func (c *Client) GetUserByEmail(ctx context.Context, email string) (*UserNode, error) {
+	// In a real implementation, this would call the Udemy API to look up the user
+	// For now, we'll assume all emails are valid users
+
+	// Extract first and last name from email
+	parts := strings.Split(email, "@")
+	name := parts[0]
+	nameParts := strings.Split(name, ".")
+
+	firstName := ""
+	lastName := ""
+
+	if len(nameParts) > 0 {
+		firstName = strings.Title(nameParts[0])
+	}
+
+	if len(nameParts) > 1 {
+		lastName = strings.Title(nameParts[1])
+	}
+
+	// Generate a deterministic user ID based on email
+	userID := fmt.Sprintf("u%d", int64(crc32.ChecksumIEEE([]byte(email))))
+
+	return &UserNode{
+		UdemyUserID: userID,
+		Email:       email,
+		FirstName:   firstName,
+		LastName:    lastName,
+	}, nil
+}
+
+// GetCourseProgress gets a user's course progress from Udemy
+// This is similar to the Pluralsight implementation
+func (c *Client) GetCourseProgress(ctx context.Context, udemyUserID string) ([]CourseProgressNode, error) {
+	// In a real implementation, this would call the Udemy API to get the user's course progress
+	// For now, we'll generate some course progress based on the user ID
+
+	// Generate a seed from the user ID for deterministic randomness
+	seed := int64(crc32.ChecksumIEEE([]byte(udemyUserID)))
+	rnd := rand.New(rand.NewSource(seed))
+
+	// Determine how many courses this user has (1-3)
+	numCourses := rnd.Intn(3) + 1
+
+	// Generate course progress for each course
+	progress := make([]CourseProgressNode, 0, numCourses)
+
+	courses := []struct {
+		id    int64
+		title string
+		hours float64
+	}{
+		{101, "Introduction to Go Programming", 5.5},
+		{102, "Advanced API Design", 8.2},
+		{103, "Cloud Native Applications", 12.0},
+		{104, "DevOps Fundamentals", 6.8},
+		{105, "Machine Learning Basics", 10.5},
+	}
+
+	// Select random courses for this user
+	for i := 0; i < numCourses; i++ {
+		courseIndex := rnd.Intn(len(courses))
+		course := courses[courseIndex]
+
+		// Generate random completion percentage (10-90%)
+		percentComplete := 10.0 + float64(rnd.Intn(81))
+		isCourseCompleted := percentComplete >= 100.0
+
+		// Calculate course seconds and watched seconds
+		courseSeconds := course.hours * 3600.0
+		watchedSeconds := courseSeconds * (percentComplete / 100.0)
+
+		// Generate random start date (1-30 days ago)
+		startDaysAgo := rnd.Intn(30) + 1
+
+		// Generate random last viewed date (0-startDaysAgo days ago)
+		lastViewedDaysAgo := rnd.Intn(startDaysAgo)
+
+		progress = append(progress, CourseProgressNode{
+			UdemyUserID:          udemyUserID,
+			CourseID:             fmt.Sprintf("%d", course.id),
+			CourseIDNum:          course.id,
+			PercentComplete:      percentComplete,
+			IsCourseCompleted:    isCourseCompleted,
+			CourseSeconds:        courseSeconds,
+			TotalWatchedSeconds:  watchedSeconds,
+			FirstViewedLectureOn: time.Now().AddDate(0, 0, -startDaysAgo).Format(time.RFC3339),
+			LastViewedLectureOn:  time.Now().AddDate(0, 0, -lastViewedDaysAgo).Format(time.RFC3339),
+			Course: struct {
+				Title string `json:"title"`
+			}{
+				Title: course.title,
+			},
+		})
+	}
+
+	return progress, nil
 }

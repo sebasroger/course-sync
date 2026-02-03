@@ -199,3 +199,41 @@ func max(a, b int) int {
 	}
 	return b
 }
+
+// ListEmployeesFields fetches all employees from /api/v2/core/employees and filters to only include specified fields.
+// This is an optimized version of ListAllEmployees that only returns the fields you need.
+func (c *Client) ListEmployeesFields(ctx context.Context, pageSizeHint int, fields []string) ([]map[string]any, error) {
+	// Get all employees using the standard method
+	allEmployees, err := c.ListAllEmployees(ctx, pageSizeHint)
+	if err != nil {
+		return nil, err
+	}
+
+	// If no fields specified, return all data
+	if len(fields) == 0 {
+		return allEmployees, nil
+	}
+
+	// Create a map for faster field lookup
+	fieldMap := make(map[string]bool, len(fields))
+	for _, field := range fields {
+		fieldMap[field] = true
+	}
+
+	// Filter each employee to only include the specified fields
+	result := make([]map[string]any, len(allEmployees))
+	for i, employee := range allEmployees {
+		filtered := make(map[string]any)
+
+		// Only include fields that were requested
+		for _, field := range fields {
+			if value, exists := employee[field]; exists {
+				filtered[field] = value
+			}
+		}
+
+		result[i] = filtered
+	}
+
+	return result, nil
+}

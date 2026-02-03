@@ -83,8 +83,13 @@ type CourseAttendance struct {
 	Provider             string  `json:"provider"`
 }
 
-type UpdateEmployeeRequest struct {
+type CandidateData struct {
 	CourseAttendance []CourseAttendance `json:"courseAttendance"`
+}
+
+type UpdateEmployeeRequest struct {
+	Email         string        `json:"email,omitempty"`
+	CandidateData CandidateData `json:"candidateData"`
 }
 
 func (c *Client) UpdateEmployee(ctx context.Context, profileID string, req UpdateEmployeeRequest) error {
