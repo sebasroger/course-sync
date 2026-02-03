@@ -129,7 +129,7 @@ func main() {
 			Pass:                  cfg.SFTPPass,
 			RemoteDir:             cfg.SFTPDir,
 			InsecureIgnoreHostKey: cfg.SFTPInsecureIgnoreHostKey,
-			HostKey:               cfg.SFTPHostKey, // <- ESTE
+			HostKey:               cfg.SFTPHostKey,
 			KeyPath:               cfg.SFTPKeyPath,
 			KeyPassphrase:         cfg.SFTPKeyPassphrase,
 		}

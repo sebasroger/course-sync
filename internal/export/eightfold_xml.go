@@ -13,7 +13,7 @@ import (
 Eightfold XML examples (from ef_course_add.xml / ef_course_update.xml):
 
 <EF_Course_List>
-  <EF_Course operation="upsert">
+  <EF_Course>
     <title>...</title>
     <lms_course_id>...</lms_course_id>
     <description>...</description>
