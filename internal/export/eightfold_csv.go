@@ -24,9 +24,10 @@ var header = []string{
 	"difficulty",
 	"provider",
 	"status",
+	// "eligibility_tags", // Temporalmente deshabilitado, se implementará en el futuro
 }
 
-func WriteEightfoldCourseCSV(outPath string, courses []domain.UnifiedCourse) error {
+func WriteEightfoldCourseCSV(outPath string, courses []domain.UnifiedCourse, cfg CourseTagConfig) error {
 	f, err := os.Create(outPath)
 	if err != nil {
 		return fmt.Errorf("export: create csv: %w", err)
@@ -47,6 +48,10 @@ func WriteEightfoldCourseCSV(outPath string, courses []domain.UnifiedCourse) err
 			status = "active"
 		}
 
+		// Eligibility tags temporalmente deshabilitados
+		// tags := cfg.TagsBySource[strings.ToLower(strings.TrimSpace(c.Source))]
+		// tagsStr := strings.Join(compactStrings(tags), ",")
+
 		row := []string{
 			systemID,
 			c.Title,
@@ -61,6 +66,7 @@ func WriteEightfoldCourseCSV(outPath string, courses []domain.UnifiedCourse) err
 			c.Difficulty,
 			c.Source, // provider
 			status,
+			// tagsStr, // Temporalmente deshabilitado
 		}
 
 		if err := w.Write(row); err != nil {

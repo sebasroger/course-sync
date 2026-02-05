@@ -104,8 +104,17 @@ func TestWriteEightfoldCourseCSV(t *testing.T) {
 	tempFile := filepath.Join(tempDir, "test_courses.csv")
 	defer os.Remove(tempFile)
 
+	// Create tag configuration
+	tagCfg := CourseTagConfig{
+		EligibilityTagsFieldName: "eligibility_tags",
+		TagsBySource: map[string][]string{
+			"udemy":       {"IC1", "IC2"},
+			"pluralsight": {"IC5", "IC6"},
+		},
+	}
+
 	// Write CSV
-	err := WriteEightfoldCourseCSV(tempFile, courses)
+	err := WriteEightfoldCourseCSV(tempFile, courses, tagCfg)
 	if err != nil {
 		t.Fatalf("WriteEightfoldCourseCSV() error = %v", err)
 	}

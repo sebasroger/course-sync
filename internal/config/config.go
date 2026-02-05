@@ -7,10 +7,10 @@ import (
 
 type Config struct {
 	// Eightfold
-	EightfoldBaseURL   string
-	EightfoldBasicAuth string
-	EightfoldUser      string
-	EightfoldPass      string
+	EightfoldBaseURL     string
+	EightfoldBasicAuth   string
+	EightfoldUser        string
+	EightfoldPass        string
 	EightfoldBearerToken string
 
 	// Udemy
@@ -57,7 +57,7 @@ func Load() Config {
 		SFTPPort:                  getenvInt("SFTP_PORT", 22),
 		SFTPUser:                  getenv("SFTP_USER", ""),
 		SFTPPass:                  getenv("SFTP_PASS", ""),
-		SFTPDir:                   getenv("SFTP_DIR", "/upload"),
+		SFTPDir:                   getenv("SFTP_DIR", "/inbound"),
 		SFTPInsecureIgnoreHostKey: getenvBool("SFTP_INSECURE_IGNORE_HOSTKEY", true),
 		SFTPHostKey:               os.Getenv("SFTP_HOST_KEY"),
 		SFTPKeyPath:               os.Getenv("SFTP_KEY_PATH"),

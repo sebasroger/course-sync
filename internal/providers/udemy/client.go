@@ -32,10 +32,16 @@ type Client struct {
 
 func New(baseURL, clientId string, clientSecret string) *Client {
 	tr := &http.Transport{
-		MaxIdleConns:        200,
-		MaxIdleConnsPerHost: 200,
+		// Reducimos el número de conexiones para evitar errores GOAWAY
+		MaxIdleConns:        50,
+		MaxIdleConnsPerHost: 50,
 		IdleConnTimeout:     90 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
+		// Configuración específica para HTTP/2
+		ForceAttemptHTTP2: true,
+		MaxConnsPerHost:   50,
+		// Deshabilitar reutilización de conexiones para evitar GOAWAY
+		DisableKeepAlives: false,
 	}
 
 	return &Client{
@@ -150,8 +156,9 @@ func (c *Client) ListCourses(ctx context.Context, pageSize int, maxPages int) ([
 		return all, nil
 	}
 
-	workers := envInt("UDEMY_WORKERS", 8) // 6-12 recomendado
-	rps := envInt("UDEMY_RPS", 8)         // global, para evitar 429
+	// Reducimos el número de workers y la tasa de solicitudes para evitar errores GOAWAY
+	workers := envInt("UDEMY_WORKERS", 4) // Reducido de 8 a 4
+	rps := envInt("UDEMY_RPS", 4)         // Reducido de 8 a 4, global, para evitar 429
 	if workers < 1 {
 		workers = 1
 	}
@@ -241,7 +248,7 @@ func minInt(a, b int) int {
 }
 
 func (c *Client) fetchPageWithRetry(ctx context.Context, pageURL string) (*ListCoursesResponse, error) {
-	const maxAttempts = 8
+	const maxAttempts = 12 // Aumentado de 8 a 12 para más reintentos
 
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
@@ -251,19 +258,39 @@ func (c *Client) fetchPageWithRetry(ctx context.Context, pageURL string) (*ListC
 		}
 
 		lastErr = err
+		// Si es un error no recuperable, salimos inmediatamente
 		if retryAfter < 0 {
 			return nil, err
 		}
 
+		// Verificar si es un error GOAWAY
+		isGoAway := strings.Contains(err.Error(), "GOAWAY") ||
+			strings.Contains(err.Error(), "connection closed")
+
 		sleep := retryAfter
 		if sleep == 0 {
-			base := 700 * time.Millisecond
+			// Backoff exponencial con jitter
+			base := 1000 * time.Millisecond // Aumentado de 700ms a 1s
 			sleep = base * time.Duration(1<<(attempt-1))
-			if sleep > 30*time.Second {
-				sleep = 30 * time.Second
+
+			// Para errores GOAWAY, esperar más tiempo
+			if isGoAway && attempt > 1 {
+				sleep = sleep * 2
 			}
-			sleep += time.Duration(rand.Intn(500)) * time.Millisecond
+
+			// Limitar el tiempo máximo de espera
+			if sleep > 45*time.Second { // Aumentado de 30s a 45s
+				sleep = 45 * time.Second
+			}
+
+			// Añadir jitter para evitar sincronización
+			jitter := time.Duration(rand.Intn(1000)) * time.Millisecond // Aumentado de 500ms a 1s
+			sleep += jitter
 		}
+
+		// Loguear el reintento para debugging
+		fmt.Printf("udemy: retrying page %s (attempt %d/%d) after %v: %v\n",
+			pageURL, attempt, maxAttempts, sleep, err)
 
 		select {
 		case <-time.After(sleep):
@@ -346,11 +373,23 @@ func parseRetryAfter(resp *http.Response) time.Duration {
 }
 
 func isNetRetryable(err error) bool {
+	// Verificar si es un error de red
 	var nerr net.Error
 	if errors.As(err, &nerr) {
 		return nerr.Timeout() || nerr.Temporary()
 	}
-	return errors.Is(err, context.DeadlineExceeded)
+
+	// Verificar si es un error de contexto
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	// Verificar si es un error GOAWAY de HTTP/2
+	errStr := err.Error()
+	return strings.Contains(errStr, "GOAWAY") ||
+		strings.Contains(errStr, "connection closed") ||
+		strings.Contains(errStr, "EOF") ||
+		strings.Contains(errStr, "reset by peer")
 }
 
 func pickUdemyImageURL(raw json.RawMessage) string {

@@ -2,3 +2,4 @@
 out/
 .env
 secrets/
+.DS_Store

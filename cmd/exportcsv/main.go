@@ -23,21 +23,44 @@ type provResult struct {
 	err     error
 }
 
+// splitCSV splits a comma-separated string into a slice of strings,
+// trimming whitespace and removing empty entries.
+func splitCSV(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		v := strings.TrimSpace(p)
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 func main() {
 	var (
-		outPath    = flag.String("out", "COURSE-MAIN_ALL.csv", "output csv path")
+		outPath = flag.String("out", "out/COURSE-MAIN_ALL.csv", "output csv path")
+		upload  = flag.Bool("upload", false, "upload to SFTP after generating the file")
+
 		udemyPages = flag.Int("udemy-max-pages", 1, "max pages to fetch from udemy (0 = all)")
 		psPages    = flag.Int("ps-max-pages", 1, "max pages to fetch from pluralsight (0 = all)")
-		pageSize   = flag.Int("page-size", 100, "page size for providers (when supported)")
-		uploadSFTP = flag.Bool("sftp", false, "upload the generated CSV via SFTP")
+		pageSize   = flag.Int("page-size", 100, "page size for providers (Udemy page_size / Pluralsight first). Udemy will be clamped to its max.")
+
+		// Eligibility tags temporalmente deshabilitados
+		// udemyTags = flag.String("udemy-tags", "IC1,IC2,IC3,IC4", "eligibility tags for Udemy courses (comma-separated)")
+		// psTags    = flag.String("pluralsight-tags", "IC5,IC6,IC7,M1,M2,M3", "eligibility tags for Pluralsight courses (comma-separated)")
 	)
 	flag.Parse()
 
-	// timeout general grande
-	rootCtx, rootCancel := context.WithTimeout(context.Background(), 8*time.Hour)
-	defer rootCancel()
+	rootCtx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
+	defer cancel()
 
 	cfg := config.Load()
+
+	start := time.Now()
+	defer func() {
+		log.Printf("job finished in %s", time.Since(start))
+	}()
 
 	// asegura dir de salida
 	if dir := filepath.Dir(*outPath); dir != "." && dir != "" {
@@ -98,7 +121,20 @@ func main() {
 		"pt": true,
 	})
 
-	if err := export.WriteEightfoldCourseCSV(*outPath, filtered); err != nil {
+	// Eligibility tags temporalmente deshabilitados
+	// tagCfg := export.CourseTagConfig{
+	// 	EligibilityTagsFieldName: "eligibility_tags",
+	// 	TagsBySource: map[string][]string{
+	// 		"udemy":       splitCSV(*udemyTags),
+	// 		"pluralsight": splitCSV(*psTags),
+	// 	},
+	// }
+
+	// Configuración vacía ya que no se usarán tags por ahora
+	tagCfg := export.CourseTagConfig{}
+
+	// Use the CSV writer with the tag configuration
+	if err := export.WriteEightfoldCourseCSV(*outPath, filtered, tagCfg); err != nil {
 		log.Fatal(err)
 	}
 
@@ -111,25 +147,41 @@ func main() {
 		len(all),
 	)
 
-	if *uploadSFTP {
+	if *upload {
 		remoteName := filepath.Base(*outPath)
 
+		// Verificar que el archivo local existe antes de intentar subirlo
+		if _, err := os.Stat(*outPath); os.IsNotExist(err) {
+			log.Fatalf("Error: El archivo local %s no existe", *outPath)
+		}
+
+		log.Printf("Iniciando subida SFTP del archivo %s", *outPath)
+
+		// Usar la ruta completa que sabemos que funciona
 		upCfg := sftpclient.Config{
 			Host:                  cfg.SFTPHost,
 			Port:                  cfg.SFTPPort,
 			User:                  cfg.SFTPUser,
 			Pass:                  cfg.SFTPPass,
-			RemoteDir:             cfg.SFTPDir,
+			RemoteDir:             "/ef-sftp/femsa-sandbox/home/inbound", // Usar la ruta completa con el directorio inbound
 			InsecureIgnoreHostKey: cfg.SFTPInsecureIgnoreHostKey,
+			HostKey:               cfg.SFTPHostKey,
+			KeyPath:               cfg.SFTPKeyPath,
+			KeyPassphrase:         cfg.SFTPKeyPassphrase,
 		}
+
+		// Mostrar la configuración SFTP (sin mostrar contraseñas)
+		log.Printf("Configuración SFTP: Host=%s, Port=%d, User=%s, RemoteDir=%s",
+			upCfg.Host, upCfg.Port, upCfg.User, upCfg.RemoteDir)
 
 		upCtx, upCancel := context.WithTimeout(rootCtx, 5*time.Minute)
 		defer upCancel()
 
+		log.Printf("Subiendo archivo %s a %s:%d%s/%s...", *outPath, upCfg.Host, upCfg.Port, upCfg.RemoteDir, remoteName)
 		if err := sftpclient.UploadFile(upCtx, upCfg, *outPath, remoteName); err != nil {
-			log.Fatal(err)
+			log.Fatalf("Error al subir archivo: %v", err)
 		}
-		log.Printf("uploaded to sftp://%s:%d%s/%s", upCfg.Host, upCfg.Port, upCfg.RemoteDir, remoteName)
+		log.Printf("¡Subida exitosa! Archivo disponible en sftp://%s:%d%s/%s", upCfg.Host, upCfg.Port, upCfg.RemoteDir, remoteName)
 	}
 }
 

@@ -1,11 +1,13 @@
 package sftpclient
 
 import (
+	"bufio"
 	"context"
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"path"
@@ -102,6 +104,16 @@ func UploadFile(ctx context.Context, cfg Config, localPath string, remoteFileNam
 		Auth:            auth,
 		HostKeyCallback: hostKeyCb,
 		Timeout:         20 * time.Second,
+		// Habilitar compresión para mejorar velocidad
+		Config: ssh.Config{
+			Ciphers: []string{
+				"aes128-gcm@openssh.com",
+				"aes256-gcm@openssh.com",
+				"aes128-ctr",
+				"aes192-ctr",
+				"aes256-ctr",
+			},
+		},
 	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
@@ -159,8 +171,54 @@ func UploadFile(ctx context.Context, cfg Config, localPath string, remoteFileNam
 	}
 	defer dst.Close()
 
-	if _, err := io.Copy(dst, src); err != nil {
-		return fmt.Errorf("sftp: upload copy: %w", err)
+	// Usar buffer grande para mejorar rendimiento
+	bufSize := 1024 * 1024 // 1MB buffer
+	buf := make([]byte, bufSize)
+
+	// Crear un escritor bufferizado para mejorar rendimiento
+	bufWriter := bufio.NewWriterSize(dst, bufSize)
+
+	// Obtener tamaño del archivo para reportar progreso
+	fileInfo, err := src.Stat()
+	if err != nil {
+		return fmt.Errorf("sftp: get file size: %w", err)
+	}
+	totalSize := fileInfo.Size()
+
+	// Iniciar tiempo para calcular velocidad
+	startTime := time.Now()
+	transferred := int64(0)
+	lastReport := time.Now()
+
+	// Copiar con buffer grande y reportar progreso
+	for {
+		n, err := src.Read(buf)
+		if err != nil && err != io.EOF {
+			return fmt.Errorf("sftp: read error: %w", err)
+		}
+		if n == 0 {
+			break
+		}
+
+		if _, err := bufWriter.Write(buf[:n]); err != nil {
+			return fmt.Errorf("sftp: write error: %w", err)
+		}
+
+		transferred += int64(n)
+
+		// Reportar progreso cada 3 segundos
+		if time.Since(lastReport) > 3*time.Second {
+			elapsed := time.Since(startTime).Seconds()
+			speed := float64(transferred) / elapsed / 1024 / 1024 // MB/s
+			percent := float64(transferred) * 100 / float64(totalSize)
+			log.Printf("SFTP: Transferido %.2f%% (%.2f MB/s)", percent, speed)
+			lastReport = time.Now()
+		}
+	}
+
+	// Asegurar que todos los datos se escriban
+	if err := bufWriter.Flush(); err != nil {
+		return fmt.Errorf("sftp: flush error: %w", err)
 	}
 
 	return nil
