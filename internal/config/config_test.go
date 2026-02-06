@@ -143,8 +143,8 @@ func TestLoad(t *testing.T) {
 	if cfg.SFTPPort != 22 {
 		t.Errorf("Expected default SFTPPort to be 22, got %d", cfg.SFTPPort)
 	}
-	if cfg.SFTPDir != "/upload" {
-		t.Errorf("Expected default SFTPDir to be '/upload', got '%s'", cfg.SFTPDir)
+	if cfg.SFTPDir != "/inbound" {
+		t.Errorf("Expected default SFTPDir to be '/inbound', got '%s'", cfg.SFTPDir)
 	}
 	if cfg.SFTPInsecureIgnoreHostKey != true {
 		t.Errorf("Expected default SFTPInsecureIgnoreHostKey to be true, got %v", cfg.SFTPInsecureIgnoreHostKey)

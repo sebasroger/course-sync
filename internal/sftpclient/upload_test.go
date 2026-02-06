@@ -54,7 +54,7 @@ func TestUploadFileValidation(t *testing.T) {
 			localPath:      testFile,
 			remoteFileName: testFile,
 			expectError:    true,
-			errorContains:  "sftp: missing env SFTP_HOST / SFTP_USER / SFTP_PASS",
+			errorContains:  "sftp: missing SFTP_HOST / SFTP_USER",
 		},
 		{
 			name: "Non-existent local file with valid config",
@@ -66,7 +66,7 @@ func TestUploadFileValidation(t *testing.T) {
 			localPath:      "non_existent_file.txt",
 			remoteFileName: testFile,
 			expectError:    true,
-			errorContains:  "sftp: dial error", // This is what actually happens first in the real code
+			errorContains:  "sftp: host key check enabled but SFTP_HOST_KEY not set",
 		},
 	}
 

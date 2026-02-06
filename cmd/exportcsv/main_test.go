@@ -2,6 +2,7 @@ package main
 
 import (
 	"course-sync/internal/domain"
+	"reflect"
 	"testing"
 )
 
@@ -90,6 +91,31 @@ func TestNormalizeLang(t *testing.T) {
 		result := normalizeLang(tc.input)
 		if result != tc.expected {
 			t.Errorf("normalizeLang(%q) = %q, want %q", tc.input, result, tc.expected)
+		}
+	}
+}
+
+func TestSplitCSV(t *testing.T) {
+	testCases := []struct {
+		input    string
+		expected []string
+	}{
+		{"", []string{}},
+		{"a", []string{"a"}},
+		{"a,b,c", []string{"a", "b", "c"}},
+		{"a, b, c", []string{"a", "b", "c"}},
+		{" a , b , c ", []string{"a", "b", "c"}},
+		{"a,,c", []string{"a", "c"}},
+		{"a, ,c", []string{"a", "c"}},
+		{" , , ", []string{}},
+		{"IC1,IC2,IC3,IC4", []string{"IC1", "IC2", "IC3", "IC4"}},
+		{"IC5,IC6,IC7,M1,M2,M3", []string{"IC5", "IC6", "IC7", "M1", "M2", "M3"}},
+	}
+
+	for _, tc := range testCases {
+		result := splitCSV(tc.input)
+		if !reflect.DeepEqual(result, tc.expected) {
+			t.Errorf("splitCSV(%q) = %v, want %v", tc.input, result, tc.expected)
 		}
 	}
 }

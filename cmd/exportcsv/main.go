@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -148,7 +149,11 @@ func main() {
 	)
 
 	if *upload {
-		remoteName := filepath.Base(*outPath)
+		// Generar nombre con formato DF_COURSE_IMPORT_AAAAMMDD_HHMMSS
+		now := time.Now()
+		dateStr := now.Format("20060102")
+		timeStr := now.Format("150405")
+		remoteName := fmt.Sprintf("DF_COURSE_IMPORT_%s_%s.csv", dateStr, timeStr)
 
 		// Verificar que el archivo local existe antes de intentar subirlo
 		if _, err := os.Stat(*outPath); os.IsNotExist(err) {

@@ -86,6 +86,13 @@ func TestNormalizeLang(t *testing.T) {
 		{"fr-FR", "fr-fr"},
 		{"", ""},
 		{"  ", ""},
+		{"de", "de"},
+		{"de-DE", "de-de"},
+		{"de_DE", "de-de"},
+		{"it", "it"},
+		{"it-IT", "it-it"},
+		{"ja", "ja"},
+		{"ja-JP", "ja-jp"},
 	}
 
 	for _, tc := range testCases {

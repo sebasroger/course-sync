@@ -202,6 +202,34 @@ func TestAnyToStringSlice(t *testing.T) {
 			input:    []any{"user@example.com", "user@example.com"},
 			expected: []string{"user@example.com"},
 		},
+		{
+			name: "Map with data array",
+			input: map[string]any{
+				"data": []any{"user1@example.com", "user2@example.com"},
+			},
+			expected: []string{"user1@example.com", "user2@example.com"},
+		},
+		{
+			name: "Mixed types in array",
+			input: []any{
+				"user1@example.com",
+				nil,
+				123,
+				map[string]any{"email": "user2@example.com"},
+				map[string]any{"name": "John Doe"},
+			},
+			expected: []string{"user1@example.com", "user2@example.com"},
+		},
+		{
+			name:     "Empty string",
+			input:    "",
+			expected: []string{},
+		},
+		{
+			name:     "Whitespace string",
+			input:    "   ",
+			expected: []string{},
+		},
 	}
 
 	for _, tc := range testCases {
