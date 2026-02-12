@@ -20,7 +20,7 @@ var header = []string{
 	"imageUrl",
 	"language",
 	"publishedDate",
-	"lmsCourseId",
+	"COURSE_ID",
 	"difficulty",
 	"provider",
 	"status",
